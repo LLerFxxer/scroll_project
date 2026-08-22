@@ -4,8 +4,12 @@ interface Window {
   api: {
     capture: {
       start(): Promise<void>
-      getSources(): Promise<{ id: string; name: string; dataURL: string }[]>
+      getSources(): Promise<{ id: string; name: string; dataURL: string; scaleFactor?: number }[]>
+      done(data: { rect: { x: number; y: number; width: number; height: number }; dataURL: string }): Promise<void>
       onDone(cb: (data: { rect: { x: number; y: number; width: number; height: number }; dataURL: string }) => void): void
+    }
+    overlay: {
+      close(): Promise<void>
     }
     ocr: {
       recognize(dataURL: string): Promise<import('./src/types/ocr').OcrResult>

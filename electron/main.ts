@@ -1,6 +1,6 @@
 import { app, BrowserWindow, globalShortcut, Tray, Menu, ipcMain, desktopCapturer, screen } from 'electron'
 import { join } from 'path'
-import { createOverlayWindow, getOverlayWindow } from './overlay'
+import { createOverlayWindow, getOverlayWindow, hideOverlay, showOverlay } from './overlay'
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
@@ -47,10 +47,9 @@ function createTray() {
 
 async function triggerCapture() {
   const overlay = getOverlayWindow() ?? createOverlayWindow()
-  // Get primary display screenshot via desktopCapturer in overlay process
-  // Here we just show overlay, overlay will request desktopCapturer itself
-  overlay.show()
-  overlay.focus()
+  showOverlay()
+  // 确保 overlay 内容已加载，延迟 50ms 再聚焦，避免焦点丢失
+  setTimeout(() => overlay.focus(), 50)
 }
 
 app.whenReady().then(() => {
@@ -72,19 +71,37 @@ app.whenReady().then(() => {
     await triggerCapture()
   })
 
+  ipcMain.handle('overlay:close', async () => {
+    hideOverlay()
+  })
+
+  ipcMain.handle('capture:done', async (_e, data: { rect: { x: number; y: number; width: number; height: number }; dataURL: string }) => {
+    hideOverlay()
+    // 转发给主窗口
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('capture:done', data)
+      mainWindow.show()
+      mainWindow.focus()
+    }
+  })
+
   ipcMain.handle('capture:getSources', async () => {
+    const primary = screen.getPrimaryDisplay()
+    const { width, height } = primary.size
+    const scale = primary.scaleFactor
     const sources = await desktopCapturer.getSources({
       types: ['screen'],
       thumbnailSize: {
-        width: screen.getPrimaryDisplay().size.width,
-        height: screen.getPrimaryDisplay().size.height
+        width: Math.round(width * scale),
+        height: Math.round(height * scale)
       }
     })
-    // Return dataURL for renderer to crop
+    // Return dataURL for renderer to crop, 同时返回 scale 供裁剪校正
     return sources.map((s) => ({
       id: s.id,
       name: s.name,
-      dataURL: s.thumbnail.toDataURL()
+      dataURL: s.thumbnail.toDataURL(),
+      scaleFactor: scale
     }))
   })
 

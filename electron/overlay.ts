@@ -7,23 +7,32 @@ export function createOverlayWindow(): BrowserWindow {
   if (overlayWindow && !overlayWindow.isDestroyed()) return overlayWindow
 
   const primaryDisplay = screen.getPrimaryDisplay()
-  const { width, height } = primaryDisplay.size
+  const { bounds, size } = primaryDisplay
+  // 使用 bounds.x/y 兼容多显示器，size 为 DIP 像素
+  const width = size.width
+  const height = size.height
 
   overlayWindow = new BrowserWindow({
     width,
     height,
-    x: 0,
-    y: 0,
+    x: bounds.x,
+    y: bounds.y,
     transparent: true,
+    backgroundColor: '#00000000',
     frame: false,
+    hasShadow: false,
     alwaysOnTop: true,
     skipTaskbar: true,
     resizable: false,
     show: false,
+    focusable: true,
+    fullscreenable: false,
+    paintWhenInitiallyHidden: false,
     webPreferences: {
       preload: join(__dirname, '../preload/preload.mjs'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      backgroundThrottling: false
     }
   })
 
@@ -38,10 +47,13 @@ export function createOverlayWindow(): BrowserWindow {
     overlayWindow = null
   })
 
-  // ESC to hide
-  overlayWindow.on('blur', () => {
-    // keep open until explicit close
-  })
+  // ESC 兜底由渲染进程处理，这里仅防止失焦自动隐藏
+  // overlayWindow.on('blur', () => {})
+
+  // 确保鼠标事件不被忽略
+  overlayWindow.setIgnoreMouseEvents(false)
+  // 防止闪烁
+  overlayWindow.setAlwaysOnTop(true, 'screen-saver')
 
   return overlayWindow
 }
@@ -52,4 +64,13 @@ export function getOverlayWindow(): BrowserWindow | null {
 
 export function hideOverlay() {
   overlayWindow?.hide()
+}
+
+export function showOverlay() {
+  if (!overlayWindow || overlayWindow.isDestroyed()) {
+    createOverlayWindow()
+  }
+  overlayWindow?.show()
+  overlayWindow?.focus()
+  overlayWindow?.setIgnoreMouseEvents(false)
 }
