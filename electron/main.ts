@@ -1,17 +1,31 @@
 import { app, BrowserWindow, globalShortcut, Tray, Menu, ipcMain, desktopCapturer, screen } from 'electron'
 import { join } from 'path'
+import { existsSync } from 'fs'
 import { createOverlayWindow, getOverlayWindow, hideOverlay, showOverlay } from './overlay'
+
+function getPreloadPath(): string {
+  const candidates = [join(__dirname, '../preload/preload.js'), join(__dirname, '../preload/preload.mjs')]
+  for (const p of candidates) {
+    if (existsSync(p)) return p
+  }
+  // 默认返回 js，日志会提示不存在
+  const def = candidates[0] as string
+  console.warn('[main] preload not found, candidates checked:', candidates)
+  return def
+}
 
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 
 function createMainWindow() {
+  const preload = getPreloadPath()
+  console.log('[main] createMainWindow preload:', preload, 'exists:', existsSync(preload))
   mainWindow = new BrowserWindow({
     width: 420,
     height: 600,
     show: true,
     webPreferences: {
-      preload: join(__dirname, '../preload/preload.js'),
+      preload,
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false

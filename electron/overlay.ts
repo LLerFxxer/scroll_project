@@ -1,5 +1,15 @@
 import { BrowserWindow, screen } from 'electron'
 import { join } from 'path'
+import { existsSync } from 'fs'
+
+function getPreloadPath(): string {
+  const candidates = [join(__dirname, '../preload/preload.js'), join(__dirname, '../preload/preload.mjs')]
+  for (const p of candidates) {
+    if (existsSync(p)) return p
+  }
+  console.warn('[overlay] preload not found, candidates:', candidates)
+  return candidates[0] as string
+}
 
 let overlayWindow: BrowserWindow | null = null
 
@@ -12,6 +22,8 @@ export function createOverlayWindow(): BrowserWindow {
   const width = size.width
   const height = size.height
 
+  const preload = getPreloadPath()
+  console.log('[overlay] preload:', preload, 'exists:', existsSync(preload))
   overlayWindow = new BrowserWindow({
     width,
     height,
@@ -30,7 +42,7 @@ export function createOverlayWindow(): BrowserWindow {
     fullscreenable: false,
     paintWhenInitiallyHidden: false,
     webPreferences: {
-      preload: join(__dirname, '../preload/preload.js'),
+      preload,
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
