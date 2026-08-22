@@ -10,4 +10,6 @@
 [2026-08-22 01:12] 修复 dev 启动错误 — package.json main: out/main/main.js, preload .mjs, 修复 No entry file，验证 build 成功
 [2026-08-22 22:37] 修复 遮罩鼠标无效/强制关闭 — 根因: overlay return null导致无DOM+IPC未闭环+窗口transparent未设背景; 修复 overlay.ts/main.ts/preload.ts/CaptureOverlay.tsx/App.tsx, 验证 lint/typecheck/test/build 全通过, 提交 5d08866 已推送
 [2026-08-22 23:05] 深度修复仍无效 — 根因2: preload ESM(.mjs)在 Electron 32 下 window.api 未定义 + Win transparent 穿透; 改 vite preload cjs 输出 preload.js + 窗口 transparent:false bg#000 + 主进程 ESC 兜底 + App 降级页, 验证 build preload.js 1.04kB, 提交 07aa1c9
+[2026-08-22 23:10] 诊断 preload CJS 冲突 — 根因3: type:module 下 .js 被当 ESM 导致 require 未定义; 改输出 preload.cjs 双兼容，验证 build preload.cjs 1.04kB，提交 e0ec9dd
+[2026-08-22 23:15] 步骤3/4 联调成功 — 用户本地验证 Ctrl+Shift+A 截图正常，遮罩拖拽/ESC/确认均可用，主窗口正确接收截图并显示 mock 翻译卡片；截图链路闭环打通
 

@@ -87,10 +87,10 @@ export function createOverlayWindow(): BrowserWindow {
     console.error('[overlay] did-fail-load', code, desc, url)
   })
 
-  // 调试：dev 时自动打开 DevTools 辅助定位
-  if (process.env['ELECTRON_RENDERER_URL']) {
-    overlayWindow.webContents.openDevTools({ mode: 'detach' })
-  }
+  // 调试：dev 时可打开 DevTools 辅助定位 (已关闭，避免打扰)
+  // if (process.env['ELECTRON_RENDERER_URL']) {
+  //   overlayWindow.webContents.openDevTools({ mode: 'detach' })
+  // }
 
   console.log('[overlay] created', { width, height, x: bounds.x, y: bounds.y, transparent: false })
 
