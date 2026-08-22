@@ -11,7 +11,7 @@ function createMainWindow() {
     height: 600,
     show: true,
     webPreferences: {
-      preload: join(__dirname, '../preload/preload.js'),
+      preload: join(__dirname, '../preload/preload.mjs'),
       contextIsolation: true,
       nodeIntegration: false
     }

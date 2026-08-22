@@ -2,7 +2,7 @@
   "name": "trans-shot",
   "version": "0.1.0",
   "description": "精简截图翻译 - 截图OCR翻译保存",
-  "main": "dist-electron/main.js",
+  "main": "out/main/main.js",
   "type": "module",
   "scripts": {
     "dev": "electron-vite dev",
@@ -53,8 +53,7 @@
       "buildResources": "build"
     },
     "files": [
-      "dist-electron/**/*",
-      "dist/**/*"
+      "out/**/*"
     ],
     "win": {
       "target": "nsis"

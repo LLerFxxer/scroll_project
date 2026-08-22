@@ -21,7 +21,7 @@ export function createOverlayWindow(): BrowserWindow {
     resizable: false,
     show: false,
     webPreferences: {
-      preload: join(__dirname, '../preload/preload.js'),
+      preload: join(__dirname, '../preload/preload.mjs'),
       contextIsolation: true,
       nodeIntegration: false
     }
