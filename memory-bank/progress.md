@@ -9,4 +9,5 @@
 [2026-08-22 01:10] Git 提交 — root-commit 2b5755d 骨架完成，下一阶段: 步骤3/4 截图能力真实联调
 [2026-08-22 01:12] 修复 dev 启动错误 — package.json main: out/main/main.js, preload .mjs, 修复 No entry file，验证 build 成功
 [2026-08-22 22:37] 修复 遮罩鼠标无效/强制关闭 — 根因: overlay return null导致无DOM+IPC未闭环+窗口transparent未设背景; 修复 overlay.ts/main.ts/preload.ts/CaptureOverlay.tsx/App.tsx, 验证 lint/typecheck/test/build 全通过, 提交 5d08866 已推送
+[2026-08-22 23:05] 深度修复仍无效 — 根因2: preload ESM(.mjs)在 Electron 32 下 window.api 未定义 + Win transparent 穿透; 改 vite preload cjs 输出 preload.js + 窗口 transparent:false bg#000 + 主进程 ESC 兜底 + App 降级页, 验证 build preload.js 1.04kB, 提交 07aa1c9
 
