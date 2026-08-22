@@ -17,8 +17,9 @@ export function createOverlayWindow(): BrowserWindow {
     height,
     x: bounds.x,
     y: bounds.y,
-    transparent: true,
-    backgroundColor: '#00000000',
+    // 关键修复：Win下 transparent:true 会导致点击穿透，改为不透明黑底 + 截图作背景
+    transparent: false,
+    backgroundColor: '#000000',
     frame: false,
     hasShadow: false,
     alwaysOnTop: true,
@@ -29,9 +30,10 @@ export function createOverlayWindow(): BrowserWindow {
     fullscreenable: false,
     paintWhenInitiallyHidden: false,
     webPreferences: {
-      preload: join(__dirname, '../preload/preload.mjs'),
+      preload: join(__dirname, '../preload/preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: false,
       backgroundThrottling: false
     }
   })
@@ -54,6 +56,21 @@ export function createOverlayWindow(): BrowserWindow {
   overlayWindow.setIgnoreMouseEvents(false)
   // 防止闪烁
   overlayWindow.setAlwaysOnTop(true, 'screen-saver')
+
+  // ESC 兜底：主进程层面监听，确保渲染进程卡死也能退出
+  overlayWindow.webContents.on('before-input-event', (_e, input) => {
+    if (input.key === 'Escape') {
+      console.log('[overlay] Escape at main, hiding')
+      hideOverlay()
+    }
+  })
+
+  // 调试：dev 时自动打开 DevTools
+  if (process.env['ELECTRON_RENDERER_URL']) {
+    // overlayWindow.webContents.openDevTools({ mode: 'detach' })
+  }
+
+  console.log('[overlay] created', { width, height, x: bounds.x, y: bounds.y, transparent: false })
 
   return overlayWindow
 }

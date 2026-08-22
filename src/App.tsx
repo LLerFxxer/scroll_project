@@ -12,15 +12,21 @@ export default function App() {
   // Overlay 模式：加载截图
   useEffect(() => {
     if (!isOverlay) return
+    console.log('[overlay] mount, window.api exists?', !!window.api, window.api)
+    if (!window.api?.capture?.getSources) {
+      console.error('[overlay] window.api missing! preload failed, check preload.js path')
+      // 降级：显示空状态保证可退出
+      return
+    }
     let cancelled = false
     window.api.capture
       .getSources()
       .then((sources) => {
         if (cancelled) return
+        console.log('[overlay] getSources ok', sources.length, sources[0]?.dataURL?.slice(0, 30))
         const primary = sources[0]
         if (primary?.dataURL) setOverlayImage(primary.dataURL)
         else {
-          // 获取失败也显示空状态，保证可 ESC 退出
           console.warn('[overlay] getSources empty', sources)
         }
       })
@@ -37,6 +43,20 @@ export default function App() {
       cancelled = true
       clearTimeout(t)
     }
+  }, [isOverlay])
+
+  // Overlay 全局 ESC 兜底：即使 React 未渲染也保证可退出
+  useEffect(() => {
+    if (!isOverlay) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        console.log('[overlay] global ESC')
+        if (window.api?.overlay?.close) window.api.overlay.close()
+        else window.close()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
   }, [isOverlay])
 
   // 主窗口：监听 overlay 传回的截图
@@ -68,10 +88,29 @@ export default function App() {
   }
 
   const handleOverlayCancel = async () => {
-    await window.api.overlay.close()
+    console.log('[overlay] cancel clicked')
+    try {
+      if (window.api?.overlay?.close) await window.api.overlay.close()
+      else window.close()
+    } catch (e) {
+      console.error('[overlay] cancel failed', e)
+      window.close()
+    }
   }
 
   if (isOverlay) {
+    // 调试：若 window.api 缺失，显示错误页保证可关闭
+    if (!window.api) {
+      return (
+        <div className="fixed inset-0 bg-red-900 text-white flex flex-col items-center justify-center p-8">
+          <div className="text-lg font-bold">preload 加载失败</div>
+          <div className="text-sm mt-2">window.api 未定义，请检查 preload.js 路径</div>
+          <button onClick={() => window.close()} className="mt-4 px-4 py-2 bg-white text-red-900 rounded">
+            关闭
+          </button>
+        </div>
+      )
+    }
     return (
       <CaptureOverlay
         image={overlayImage}

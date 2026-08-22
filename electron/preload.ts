@@ -1,5 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
+console.log('[preload] loading', new Date().toISOString())
+
 // Whitelist API
 contextBridge.exposeInMainWorld('api', {
   capture: {
