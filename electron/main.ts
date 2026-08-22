@@ -4,11 +4,15 @@ import { existsSync } from 'fs'
 import { createOverlayWindow, getOverlayWindow, hideOverlay, showOverlay } from './overlay'
 
 function getPreloadPath(): string {
-  const candidates = [join(__dirname, '../preload/preload.js'), join(__dirname, '../preload/preload.mjs')]
+  const candidates = [
+    join(__dirname, '../preload/preload.cjs'),
+    join(__dirname, '../preload/preload.js'),
+    join(__dirname, '../preload/preload.mjs')
+  ]
   for (const p of candidates) {
     if (existsSync(p)) return p
   }
-  // 默认返回 js，日志会提示不存在
+  // 默认返回 cjs，日志会提示不存在
   const def = candidates[0] as string
   console.warn('[main] preload not found, candidates checked:', candidates)
   return def
@@ -30,6 +34,12 @@ function createMainWindow() {
       nodeIntegration: false,
       sandbox: false
     }
+  })
+  mainWindow.webContents.on('preload-error', (_e, path, err) => {
+    console.error('[main] preload-error', path, err)
+  })
+  mainWindow.webContents.on('did-fail-load', (_e, code, desc, url) => {
+    console.error('[main] did-fail-load', code, desc, url)
   })
 
   if (process.env['ELECTRON_RENDERER_URL']) {
