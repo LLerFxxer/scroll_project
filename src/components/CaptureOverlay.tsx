@@ -31,8 +31,9 @@ function lineBoxStyle(ln: Line, rect: Rect, scale: number): React.CSSProperties 
     color: '#fff',
     fontFamily: BOX_FONT_FAMILY,
     lineHeight: 1.2,
-    letterSpacing: 0,
-    whiteSpace: 'pre-wrap',
+    letterSpacing: 'normal',
+    wordSpacing: 'normal',
+    whiteSpace: 'normal',
     overflowWrap: 'break-word',
     overflow: 'hidden',
     display: 'flex',
@@ -117,7 +118,9 @@ export function CaptureOverlay({ image, onCancel }: Props) {
             setOcrText('')
             setOcrLang('')
           } else {
-            setLines(res.lines as Line[])
+            // 清洗译文: 折叠多余空白，避免中文间出现字符间隔
+            const clean = (s: string) => s.replace(/\s+/g, ' ').trim()
+            setLines((res.lines as Line[]).map((l) => ({ ...l, translated: clean(l.translated) })))
             setOcrText(res.ocr.text)
             setOcrLang(res.ocr.lang)
             setAllFallback(!!res.allFallback)
@@ -257,9 +260,7 @@ export function CaptureOverlay({ image, onCancel }: Props) {
       <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-black/70 text-white text-xs px-3 py-1.5 rounded-full flex items-center gap-3">
         {phase === 'select' && <><span>拖拽框选区域</span><span className="opacity-60">|</span><span>ESC 退出</span></>}
         {phase === 'loading' && <span>正在识别{mode === 'translate' ? '并翻译' : ''}...</span>}
-        {phase === 'result' && (
-          <>{mode === 'ocr' ? <span>已识别文本 · {LANG_LABEL[ocrLang] ?? ocrLang}</span> : <span>已覆盖为中文 · 原文 {LANG_LABEL[ocrLang] ?? ocrLang}</span>}<span className="opacity-60">|</span><span>ESC 返回</span></>
-        )}
+        {phase === 'result' && <><span>{mode === 'ocr' ? '已识别文本' : '已覆盖为中文'}</span><span className="opacity-60">|</span><span>ESC 返回</span></>}
         <button onClick={onCancel} className="ml-2 px-2 py-0.5 bg-white/20 hover:bg-white/30 rounded text-xs">
           {phase === 'result' ? '关闭' : '退出'}
         </button>
@@ -318,11 +319,17 @@ export function CaptureOverlay({ image, onCancel }: Props) {
               ))}
             </>
           )}
-          {/* 底部操作条 */}
-          <div className="absolute left-1/2 -translate-x-1/2 bg-black/75 backdrop-blur text-white rounded-full px-2 py-1.5 flex items-center gap-1.5 shadow-lg" style={{ top: rect.y + rect.height + 12 }}>
+          {/* 功能栏: 贴住截图框下方, 水平居中于选区, 含语言徽标 */}
+          <div
+            className="absolute whitespace-nowrap bg-black/80 backdrop-blur text-white rounded-full px-2 py-1.5 flex items-center gap-1.5 shadow-lg"
+            style={{ left: rect.x + rect.width / 2, top: rect.y + rect.height + 6, transform: 'translateX(-50%)' }}
+          >
+            <span className="px-2 py-0.5 rounded-full bg-emerald-600/90 text-xs mr-1">
+              {mode === 'ocr' ? '文本' : '原文'} {LANG_LABEL[ocrLang] ?? ocrLang}
+            </span>
             {mode === 'ocr' ? (
               <>
-                <button onClick={copyOcrText} className="px-3 py-1 rounded-full bg-white/15 hover:bg-white/25 text-sm">
+                <button onClick={copyOcrText} className="px-3 py-1 rounded-full hover:bg-white/15 text-sm">
                   复制文本
                 </button>
                 <span className="opacity-30">|</span>
