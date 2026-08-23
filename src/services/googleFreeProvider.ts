@@ -104,13 +104,19 @@ export class GoogleFreeProvider {
   name = 'google'
   async translate(text: string, from: Lang, to: Lang, timeoutMs = 3000): Promise<string> {
     if (!text.trim()) throw new Error('EMPTY_TEXT')
-    const chain = [edgeTranslate, googleTranslate, myMemoryTranslate]
+    const chain: Array<{ name: string; fn: typeof edgeTranslate }> = [
+      { name: 'edge', fn: edgeTranslate },
+      { name: 'google', fn: googleTranslate },
+      { name: 'mymemory', fn: myMemoryTranslate }
+    ]
     const errors: string[] = []
-    for (const fn of chain) {
+    for (const { name, fn } of chain) {
       try {
-        return await fn(text, from, to, timeoutMs)
+        const out = await fn(text, from, to, timeoutMs)
+        logger.info(`[FreeTranslate] ok via ${name} (${text.length} chars)`)
+        return out
       } catch (e) {
-        errors.push(errMsg(e))
+        errors.push(`${name}: ${errMsg(e)}`)
       }
     }
     throw new Error(`FREE_ALL_FAILED: ${errors.join(' | ')}`)
