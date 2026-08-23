@@ -1,113 +1,178 @@
-import type { ITranslateRouter, TranslateRequest, TranslateResponse, ITranslateProvider } from '@/types/translate'
-import type { Lang } from '@/types/ocr'
-import { logger } from '@/lib/logger'
+import type { TranslateRequest, TranslateResponse, ITranslateProvider, ITranslateRouter } from '../types/translate'
+import type { Lang } from '../types/ocr'
+import { logger } from '../lib/logger'
 
-// DeepL Provider 占位
-export class DeepLProvider implements ITranslateProvider {
-  name = 'deepl'
-  constructor(
-    private apiKey: string,
-    private apiUrl: string
-  ) {}
-  async translate(text: string, _from: Lang, to: Lang): Promise<string> {
-    if (!this.apiKey) throw new Error('DEEPL_NO_KEY')
-    void this.apiUrl
-    // TODO Step 6: fetch DeepL API
-    // const res = await fetch(`${this.apiUrl}/v2/translate`, {method:'POST', body: ...})
-    return `[DeepL mock:${to}] ${text}`
-  }
-}
-
-// opencode LLM Provider
-export class OpencodeProvider implements ITranslateProvider {
-  name = 'opencode'
-  constructor(
-    private baseURL: string,
-    private model: string,
-    private apiKey?: string
-  ) {}
-  async translate(text: string, from: Lang, to: Lang): Promise<string> {
-    void from
-    // TODO Step 6: OpenAI 兼容调用
-    // const client = new OpenAI({baseURL: this.baseURL, apiKey: this.apiKey})
-    // const res = await client.chat.completions.create({model: this.model, messages: [...]})
-    return `[opencode ${this.model} ${to}] ${text}`
-  }
-}
-
-function detectLang(text: string): Lang {
-  if (/[\uAC00-\uD7AF]/.test(text)) return 'ko'
-  if (/[\u4e00-\u9fa5]/.test(text)) return 'zh'
+export function detectTextLang(text: string): Lang {
+  const ko = (text.match(/[\uAC00-\uD7AF]/g) ?? []).length
+  const zh = (text.match(/[\u4e00-\u9fa5]/g) ?? []).length
+  const en = (text.match(/[a-zA-Z]/g) ?? []).length
+  if (ko > 0 && ko >= zh && ko >= en * 0.3) return 'ko'
+  if (zh > 0 && zh >= en * 0.5) return 'zh'
   return 'en'
 }
 
 function inferTarget(from: Lang): Lang {
   if (from === 'zh') return 'en'
-  if (from === 'ko') return 'zh'
-  return 'zh' // en -> zh default
+  return 'zh' // en/ko -> zh
 }
 
-export class TranslateRouter implements ITranslateRouter {
+function withTimeout<T>(p: Promise<T>, ms: number, tag: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`${tag}_TIMEOUT_${ms}ms`)), ms)
+    p.then((v) => {
+      clearTimeout(t)
+      resolve(v)
+    }).catch((e) => {
+      clearTimeout(t)
+      reject(e)
+    })
+  })
+}
+
+/** DeepL REST 快通道 (api-free: 500k字符/月) */
+export class DeepLProvider implements ITranslateProvider {
+  name = 'deepl'
   constructor(
-    private deepl?: DeepLProvider,
-    private opencode?: OpencodeProvider
+    private apiKey: string,
+    private apiUrl: string // https://api-free.deepl.com | https://api.deepl.com
+  ) {}
+  async translate(text: string, _from: Lang, to: Lang): Promise<string> {
+    if (!this.apiKey) throw new Error('DEEPL_NO_KEY')
+    const target = to.toUpperCase() // ZH | EN | KO
+    const body = new URLSearchParams({ text, target_lang: target })
+    const res = await fetch(`${this.apiUrl}/v2/translate`, {
+      method: 'POST',
+      headers: {
+        Authorization: `DeepL-Auth-Key ${this.apiKey}`,
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body
+    })
+    if (!res.ok) throw new Error(`DEEPL_HTTP_${res.status}`)
+    const json = (await res.json()) as { translations?: { text?: string }[] }
+    const out = json.translations?.[0]?.text ?? ''
+    if (!out) throw new Error('DEEPL_EMPTY')
+    return out
+  }
+}
+
+const LANG_NAME: Record<Lang, string> = { zh: 'Simplified Chinese', en: 'English', ko: 'Korean', auto: 'the source language' }
+
+/** opencode LLM 精译通道 (OpenAI 兼容 /chat/completions) */
+export class OpencodeProvider implements ITranslateProvider {
+  name = 'opencode'
+  constructor(
+    private opts: { baseURL: string; model: string; apiKey?: string; timeoutMs?: number }
+  ) {}
+  async translate(text: string, from: Lang, to: Lang): Promise<string> {
+    void this.opts.timeoutMs // 超时由 Router withTimeout 控制
+    const src = from === 'auto' ? '' : ` written in ${LANG_NAME[from]}`
+    const prompt =
+      `You are a professional translator. Translate the following text${src} into ${LANG_NAME[to]}. ` +
+      `Rules: output ONLY the translation without any explanation; keep line breaks, numbers, proper nouns and code identifiers unchanged; use natural idiomatic phrasing.\n\n${text}`
+    const res = await fetch(`${this.opts.baseURL.replace(/\/$/, '')}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(this.opts.apiKey ? { Authorization: `Bearer ${this.opts.apiKey}` } : {})
+      },
+      body: JSON.stringify({
+        model: this.opts.model,
+        messages: [{ role: 'user', content: prompt }],
+        stream: false,
+        temperature: 0.2
+      }),
+      signal: AbortSignal.timeout(this.opts.timeoutMs ?? 15000)
+    })
+    if (!res.ok) throw new Error(`OPENCODE_HTTP_${res.status}`)
+    const j = (await res.json()) as { choices?: { message?: { content?: string } }[] }
+    const out = j.choices?.[0]?.message?.content?.trim() ?? ''
+    if (!out) throw new Error('OPENCODE_EMPTY')
+    return out
+  }
+}
+
+export type RefinedPayload = { requestId: number; text: string; provider: string; latencyMs: number }
+
+/**
+ * 混合路由:
+ * 1) DeepL(1.5s超时) 成功 -> 立即返回 fast；opencode 后台精译 via onRefined
+ * 2) DeepL 失败/无Key -> opencode 作为 fast (8s 超时)，无 refined
+ * 3) 全失败 -> fast=原文 fallback
+ */
+export class TranslateRouter implements ITranslateRouter {
+  private seq = 0
+  constructor(
+    private deepl?: ITranslateProvider,
+    private opencode?: ITranslateProvider
   ) {}
 
-  async translate(req: TranslateRequest): Promise<TranslateResponse> {
-    const from: Lang = (req.from && req.from !== 'auto' ? req.from : detectLang(req.text)) as Lang
-    const to: Lang = req.to === 'auto' ? inferTarget(from) : (req.to as Lang)
-
+  async translate(
+    req: TranslateRequest,
+    hooks?: { onRefined?: (p: RefinedPayload) => void }
+  ): Promise<TranslateResponse> {
+    const from: Lang = req.from && req.from !== 'auto' ? req.from : detectTextLang(req.text)
+    const to: Lang = req.to === 'auto' ? inferTarget(from) : req.to
+    const requestId = ++this.seq
     const start = Date.now()
+    logger.info('[TranslateRouter] req', { requestId, from, to, len: req.text.length })
+
     let fast = ''
     let provider: TranslateResponse['provider'] = 'fallback'
-    let fastLatency = 0
 
-    // 快通道: DeepL
+    // --- 快通道: DeepL ---
     if (this.deepl) {
       try {
-        const t0 = Date.now()
-        fast = await this.deepl.translate(req.text, from, to)
-        fastLatency = Date.now() - t0
+        fast = await withTimeout(this.deepl.translate(req.text, from, to), 1500, 'DEEPL')
         provider = 'deepl'
       } catch (e) {
-        logger.warn('[TranslateRouter] deepl failed', e)
+        logger.warn('[TranslateRouter] deepl fast failed:', e instanceof Error ? e.message : e)
       }
     }
 
-    // 若快通道失败，尝试 opencode 作为 fast
-    let refined: string | undefined
-    let refinedLatency: number | undefined
-
+    // --- 精通道: opencode ---
+    let refinedPromise: Promise<void> | null = null
     if (this.opencode) {
-      try {
+      const p = (async () => {
         const t1 = Date.now()
-        const result = await this.opencode.translate(req.text, from, to)
-        refinedLatency = Date.now() - t1
-        if (!fast) {
-          fast = result
-          fastLatency = refinedLatency
-          provider = 'opencode'
-        } else {
-          refined = result
+        try {
+          const refined = await this.opencode!.translate(req.text, from, to)
+          if (!fast) {
+            fast = refined
+            provider = 'opencode'
+          } else {
+            hooks?.onRefined?.({ requestId, text: refined, provider: 'opencode', latencyMs: Date.now() - t1 })
+          }
+        } catch (e) {
+          logger.warn('[TranslateRouter] opencode failed:', e instanceof Error ? e.message : e)
         }
-      } catch (e) {
-        logger.warn('[TranslateRouter] opencode failed', e)
+      })()
+
+      if (fast) {
+        // 已有快译：LLM 后台跑，不阻塞返回
+        refinedPromise = p
+      } else {
+        // 无快译：LLM 就是快通道，最多等 8s
+        try {
+          await withTimeout(p, 8000, 'OPENCODE_FAST')
+        } catch {
+          /* 已在内部 catch */
+        }
       }
     }
 
     if (!fast) {
-      fast = req.text // fallback 至少返回原文
+      logger.warn('[TranslateRouter] all providers failed, fallback raw text')
+      fast = req.text
       provider = 'fallback'
     }
 
-    logger.info('[TranslateRouter]', { from, to, provider, fastLatency })
+    const latencyMs = Date.now() - start
+    logger.info('[TranslateRouter] done', { requestId, provider, latencyMs })
 
-    return {
-      fast,
-      refined,
-      provider,
-      detectedFrom: from,
-      latencyMs: { fast: fastLatency || Date.now() - start, refined: refinedLatency }
-    }
+    // 防止未消费的 refined rejection
+    refinedPromise?.catch(() => undefined)
+
+    return { fast, provider, detectedFrom: from, latencyMs: { fast: latencyMs }, requestId }
   }
 }

@@ -1,10 +1,49 @@
 import { app, BrowserWindow, globalShortcut, Tray, Menu, ipcMain, desktopCapturer, screen } from 'electron'
 import { join } from 'path'
-import { existsSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { createOverlayWindow, getOverlayWindow, hideOverlay, showOverlay } from './overlay'
 import type { IOcrService } from '../src/types/ocr'
+import type { TranslateRequest } from '../src/types/translate'
+import { TranslateRouter, DeepLProvider, OpencodeProvider } from '../src/services/translateRouter'
 
 let ocrService: IOcrService | null = null
+
+/** 轻量 .env 加载 (dev 用；打包后走 electron-store，见步骤8) */
+function loadDotEnv(): void {
+  try {
+    const content = readFileSync(join(app.getAppPath(), '.env'), 'utf8')
+    for (const line of content.split(/\r?\n/)) {
+      const m = line.match(/^\s*([\w.-]+)\s*=\s*(.*)\s*$/)
+      if (m && !m[1]?.startsWith('#')) {
+        const key = m[1] as string
+        const val = (m[2] as string).replace(/^["']|["']$/g, '')
+        if (!(key in process.env)) process.env[key] = val
+      }
+    }
+    console.log('[main] .env loaded')
+  } catch {
+    console.log('[main] .env not found, using process env only')
+  }
+}
+
+let translateRouter: TranslateRouter | null = null
+function getTranslateRouter(): TranslateRouter {
+  if (!translateRouter) {
+    const deepl =
+      process.env['DEEPL_API_KEY'] && process.env['DEEPL_API_KEY'] !== ''
+        ? new DeepLProvider(process.env['DEEPL_API_KEY'], process.env['DEEPL_API_URL'] ?? 'https://api-free.deepl.com')
+        : undefined
+    const opencode = new OpencodeProvider({
+      baseURL: process.env['OPENCODE_BASE_URL'] ?? 'http://localhost:4096/v1',
+      model: process.env['OPENCODE_MODEL'] ?? 'opencode/gemini-2.5-flash',
+      apiKey: process.env['OPENCODE_API_KEY'] || undefined,
+      timeoutMs: 15000
+    })
+    translateRouter = new TranslateRouter(deepl, opencode)
+    console.log('[main] translate router ready', { deepl: !!deepl, model: opencode['opts' as never] ? '' : '' })
+  }
+  return translateRouter
+}
 
 function getPreloadPath(): string {
   const candidates = [
@@ -81,6 +120,7 @@ async function triggerCapture() {
 }
 
 app.whenReady().then(() => {
+  loadDotEnv()
   createMainWindow()
   createTray()
   createOverlayWindow()
@@ -143,6 +183,16 @@ app.whenReady().then(() => {
       ocrService = createOcrService('tesseract')
     }
     return ocrService.recognize(dataURL)
+  })
+
+  // 翻译: 快通道同步返回，LLM 精译后台完成后经 translate:refined 推送
+  ipcMain.handle('translate:translate', async (_e, req: TranslateRequest) => {
+    const win = mainWindow
+    return getTranslateRouter().translate(req, {
+      onRefined: (p) => {
+        if (win && !win.isDestroyed()) win.webContents.send('translate:refined', p)
+      }
+    })
   })
 
   // 兜底：任何时候按 Esc 都尝试隐藏遮罩（防止渲染卡死）

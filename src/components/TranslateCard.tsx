@@ -1,16 +1,36 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 type Props = {
   original: string
   translated: string
   refined?: string
+  provider?: 'deepl' | 'opencode' | 'fallback'
+  refinedProvider?: string
   onClose: () => void
   onSave: () => void
 }
 
-export function TranslateCard({ original, translated, refined, onClose, onSave }: Props) {
+const PROVIDER_LABEL: Record<string, string> = {
+  deepl: 'DeepL 快译',
+  opencode: 'LLM',
+  fallback: '原文'
+}
+
+export function TranslateCard({ original, translated, refined, provider, refinedProvider, onClose, onSave }: Props) {
   const [showRefined, setShowRefined] = useState(true)
+  const hasRefined = !!refined
   const display = showRefined && refined ? refined : translated
+
+  // 精译到达时自动切换 + 高亮闪一下
+  const [flash, setFlash] = useState(false)
+  useEffect(() => {
+    if (hasRefined) {
+      setShowRefined(true)
+      setFlash(true)
+      const t = setTimeout(() => setFlash(false), 900)
+      return () => clearTimeout(t)
+    }
+  }, [hasRefined, refined])
 
   const copy = async (text: string) => {
     await navigator.clipboard.writeText(text)
@@ -20,11 +40,17 @@ export function TranslateCard({ original, translated, refined, onClose, onSave }
     <div className="w-[380px] rounded-xl shadow-2xl border bg-white overflow-hidden">
       <div className="flex items-center justify-between px-3 py-2 border-b bg-gray-50">
         <span className="text-sm font-medium">TransShot</span>
-        <div className="flex gap-1">
-          {refined && (
+        <div className="flex gap-1 items-center">
+          {provider && provider !== 'fallback' && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600">
+              {PROVIDER_LABEL[provider]}
+            </span>
+          )}
+          {hasRefined && (
             <button
               onClick={() => setShowRefined(!showRefined)}
               className="text-xs px-2 py-1 rounded bg-blue-50 text-blue-600"
+              title={refinedProvider === 'opencode' ? `LLM 精译` : '精译'}
             >
               {showRefined ? '精译' : '快译'}
             </button>
@@ -47,12 +73,18 @@ export function TranslateCard({ original, translated, refined, onClose, onSave }
         </div>
         <div>
           <div className="text-xs text-gray-500 mb-1 flex justify-between">
-            <span>译文</span>
+            <span>{hasRefined && showRefined ? '译文 · LLM 精译' : '译文'}</span>
             <button onClick={() => copy(display)} className="text-blue-600">
               复制
             </button>
           </div>
-          <div className="text-sm bg-blue-50 p-2 rounded whitespace-pre-wrap">{display || '翻译中...'}</div>
+          <div
+            className={`text-sm p-2 rounded whitespace-pre-wrap transition-all duration-500 ${
+              flash ? 'bg-blue-100 ring-2 ring-blue-300' : 'bg-blue-50'
+            }`}
+          >
+            {display || '翻译中...'}
+          </div>
         </div>
       </div>
 

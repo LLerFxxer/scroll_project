@@ -16,6 +16,7 @@ interface Window {
     }
     translate: {
       translate(req: import('./src/types/translate').TranslateRequest): Promise<import('./src/types/translate').TranslateResponse>
+      onRefined(cb: (p: { requestId: number; text: string; provider: string; latencyMs: number }) => void): void
     }
     save: {
       saveImage(dataURL: string, opts?: import('./src/types/capture').SaveOpts): Promise<{ path: string }>

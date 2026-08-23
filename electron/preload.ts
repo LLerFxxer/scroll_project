@@ -20,7 +20,10 @@ contextBridge.exposeInMainWorld('api', {
     recognize: (dataURL: string) => ipcRenderer.invoke('ocr:recognize', dataURL)
   },
   translate: {
-    translate: (req: unknown) => ipcRenderer.invoke('translate:translate', req)
+    translate: (req: unknown) => ipcRenderer.invoke('translate:translate', req),
+    onRefined: (cb: (p: { requestId: number; text: string; provider: string; latencyMs: number }) => void) => {
+      ipcRenderer.on('translate:refined', (_e, p) => cb(p))
+    }
   },
   save: {
     saveImage: (dataURL: string, opts?: unknown) => ipcRenderer.invoke('save:saveImage', dataURL, opts)

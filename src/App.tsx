@@ -7,7 +7,7 @@ export default function App() {
   const isOverlay = new URLSearchParams(window.location.search).has('overlay')
   const [overlayImage, setOverlayImage] = useState<string | null>(null)
   const [captured, setCaptured] = useState<{ dataURL: string; text?: string } | null>(null)
-  const { translate, result, loading } = useTranslate()
+  const { translate, result, refined, loading } = useTranslate()
 
   // Overlay 模式：加载截图
   useEffect(() => {
@@ -155,8 +155,10 @@ export default function App() {
             <img src={captured.dataURL} alt="captured" className="w-[200px] border rounded bg-white" />
             <TranslateCard
               original={captured.text ?? '识别中...'}
-              translated={result?.fast ?? '等待翻译...'}
-              refined={result?.refined}
+              translated={result?.fast ?? '翻译中...'}
+              refined={refined?.text}
+              provider={result?.provider}
+              refinedProvider={refined?.provider}
               onClose={() => setCaptured(null)}
               onSave={async () => {
                 if (!captured.dataURL) return

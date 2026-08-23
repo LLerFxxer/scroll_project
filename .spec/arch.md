@@ -75,11 +75,12 @@ export interface IOcrService {
 ### 3.2 ITranslateRouter (混合)
 ```ts
 export type TranslateRequest = { text: string; from?: Lang; to: Lang }
-export type TranslateResponse = { fast: string; refined?: string; provider: 'deepl'|'opencode'|'fallback'; latencyMs: number }
+export type TranslateResponse = { fast: string; refined?: string; provider: 'deepl'|'opencode'|'fallback'; detectedFrom: Lang; latencyMs: { fast: number; refined?: number }; requestId?: number }
 export interface ITranslateRouter {
-  translate(req: TranslateRequest): Promise<TranslateResponse>
-  // 内部: deepLTranslate -> opencodeTranslate (parallel + race)
+  translate(req: TranslateRequest, hooks?: { onRefined?: (p: RefinedPayload) => void }): Promise<TranslateResponse>
+  // 快通道 DeepL 1.5s 超时；LLM 精译后台完成后经 hooks.onRefined 推送 (IPC translate:refined)
 }
+// 真实实现: DeepL REST /v2/translate + opencode OpenAI 兼容 /chat/completions (主进程 fetch, .env 配置)
 ```
 
 ### 3.3 ICaptureService

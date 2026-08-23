@@ -16,6 +16,7 @@ export type TranslateResponse = {
   provider: 'deepl' | 'opencode' | 'fallback'
   detectedFrom: Lang
   latencyMs: { fast: number; refined?: number }
+  requestId?: number
 }
 
 export interface ITranslateRouter {
