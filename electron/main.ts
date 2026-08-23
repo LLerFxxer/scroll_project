@@ -218,7 +218,7 @@ app.whenReady().then(() => {
     })
   })
 
-  // 快译覆盖: 截图 -> OCR blocks -> Google 免费逐行译中 (免Key, 遮罩内原位覆盖)
+  // 快译覆盖: 截图 -> OCR blocks -> Edge/Google/MyMemory 免费逐行译中 (免Key, 遮罩内原位覆盖)
   ipcMain.handle('translate:quick', async (_e, dataURL: string) => {
     if (!ocrService) {
       const { createOcrService } = await import('../src/services/ocrService')
@@ -237,7 +237,12 @@ app.whenReady().then(() => {
     const inputs = (ocr.blocks ?? []).map((b) => b.text)
     const translated = await gp.translateLines(inputs, ocr.lang, 'zh')
     const lines = (ocr.blocks ?? []).map((b, i) => ({ ...b, translated: translated[i] ?? b.text }))
-    return { ocr, lines }
+    // 全部行都回退原文 => 快译不可用，遮罩应明确提示
+    const allFallback = inputs.length > 0 && translated.every((t, i) => t === inputs[i])
+    if (allFallback) {
+      console.warn('[main] quick translate: all lines fell back to original')
+    }
+    return { ocr, lines, allFallback }
   })
 
   // 兜底：任何时候按 Esc 都尝试隐藏遮罩（防止渲染卡死）

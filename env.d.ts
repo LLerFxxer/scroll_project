@@ -19,7 +19,7 @@ interface Window {
     translate: {
       translate(req: import('./src/types/translate').TranslateRequest): Promise<import('./src/types/translate').TranslateResponse>
       onRefined(cb: (p: { requestId: number; text: string; provider: string; latencyMs: number }) => void): void
-      quick(dataURL: string): Promise<{ ocr: import('./src/types/ocr').OcrResult; lines: Array<import('./src/types/ocr').TextBlock & { translated: string }>; error?: string }>
+      quick(dataURL: string): Promise<{ ocr: import('./src/types/ocr').OcrResult; lines: Array<import('./src/types/ocr').TextBlock & { translated: string }>; error?: string; allFallback?: boolean }>
     }
     save: {
       saveImage(dataURL: string, opts?: import('./src/types/capture').SaveOpts): Promise<{ path: string }>

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseGoogleFreeResponse, parseEdgeResponse } from './googleFreeProvider'
+import { parseGoogleFreeResponse, parseEdgeResponse, parseMyMemoryResponse } from './googleFreeProvider'
 
 describe('parseEdgeResponse', () => {
   it('valid edge response', () => {
@@ -30,5 +30,19 @@ describe('parseGoogleFreeResponse', () => {
   it('throws on invalid', () => {
     expect(() => parseGoogleFreeResponse(null as unknown)).toThrow('GOOGLE_PARSE_FAIL')
     expect(() => parseGoogleFreeResponse({} as unknown)).toThrow('GOOGLE_PARSE_FAIL')
+  })
+})
+
+describe('parseMyMemoryResponse', () => {
+  it('valid response', () => {
+    const json = { responseData: { translatedText: '你好，世界', match: 1 }, responseStatus: 200 } as unknown
+    expect(parseMyMemoryResponse(json)).toBe('你好，世界')
+  })
+  it('throws on quota warning', () => {
+    const json = { responseData: { translatedText: 'MYMEMORY WARNING: YOU HAVE USED ALL YOUR AVAILABLE FREE TRANSLATIONS FOR TODAY' } } as unknown
+    expect(() => parseMyMemoryResponse(json)).toThrow('MYMEMORY_FAIL')
+  })
+  it('throws on empty', () => {
+    expect(() => parseMyMemoryResponse({} as unknown)).toThrow('MYMEMORY_FAIL')
   })
 })

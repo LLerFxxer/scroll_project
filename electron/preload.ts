@@ -28,7 +28,8 @@ contextBridge.exposeInMainWorld('api', {
     onRefined: (cb: (p: { requestId: number; text: string; provider: string; latencyMs: number }) => void) => {
       ipcRenderer.on('translate:refined', (_e, p) => cb(p))
     },
-    quick: (dataURL: string) => ipcRenderer.invoke('translate:quick', dataURL) as Promise<{ ocr: import('../src/types/ocr').OcrResult; lines: Array<import('../src/types/ocr').TextBlock & { translated: string }>; error?: string }>
+    quick: (dataURL: string) =>
+      ipcRenderer.invoke('translate:quick', dataURL) as Promise<{ ocr: import('../src/types/ocr').OcrResult; lines: Array<import('../src/types/ocr').TextBlock & { translated: string }>; error?: string; allFallback?: boolean }>
   },
   save: {
     saveImage: (dataURL: string, opts?: unknown) => ipcRenderer.invoke('save:saveImage', dataURL, opts)

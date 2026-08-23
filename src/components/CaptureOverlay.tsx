@@ -16,6 +16,7 @@ export function CaptureOverlay({ image, onCancel }: Props) {
   const [lines, setLines] = useState<Line[]>([])
   const [ocrText, setOcrText] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [allFallback, setAllFallback] = useState(false)
   const [scale, setScale] = useState(1)
   const [cropDataURL, setCropDataURL] = useState<string | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -26,6 +27,7 @@ export function CaptureOverlay({ image, onCancel }: Props) {
     setLines([])
     setOcrText('')
     setError(null)
+    setAllFallback(false)
     setCropDataURL(null)
   }, [])
 
@@ -62,6 +64,7 @@ export function CaptureOverlay({ image, onCancel }: Props) {
         } else {
           setLines(res.lines as Line[])
           setOcrText(res.ocr.text)
+          setAllFallback(!!res.allFallback)
         }
         setPhase('result')
       } catch (e) {
@@ -223,6 +226,30 @@ export function CaptureOverlay({ image, onCancel }: Props) {
             <div className="absolute bg-red-600 text-white text-sm px-3 py-2 rounded shadow" style={{ left: rect.x, top: rect.y }}>
               {error}
             </div>
+          ) : allFallback ? (
+            <>
+              <div className="absolute bg-amber-500 text-white text-xs px-3 py-2 rounded shadow max-w-[300px]" style={{ left: rect.x, top: rect.y }}>
+                快译不可用（网络受限）。可在主页用 LLM 精译，或点「重试」。
+              </div>
+              {lines.map((ln, i) => {
+                const [x, y, w, h] = ln.bbox
+                const left = rect.x + x / scale
+                const top = rect.y + y / scale
+                const width = w / scale
+                const height = h / scale
+                const fontSize = Math.max(10, Math.min(60, height * 0.82))
+                return (
+                  <div
+                    key={i}
+                    className="absolute flex items-center justify-center text-center leading-tight rounded px-1 overflow-hidden opacity-60"
+                    style={{ left, top, width, height, fontSize, backgroundColor: 'rgba(255,255,255,0.85)', color: '#111', fontWeight: 500 }}
+                    title={ln.text}
+                  >
+                    <span className="px-1 break-all">{ln.translated}</span>
+                  </div>
+                )
+              })}
+            </>
           ) : (
             lines.map((ln, i) => {
               const [x, y, w, h] = ln.bbox
