@@ -13,6 +13,7 @@ export function CaptureOverlay({ image, onCancel }: Props) {
   const [start, setStart] = useState<{ x: number; y: number } | null>(null)
   const [rect, setRect] = useState<Rect | null>(null)
   const [phase, setPhase] = useState<'select' | 'loading' | 'result'>('select')
+  const [mode, setMode] = useState<'ocr' | 'translate' | null>(null)
   const [lines, setLines] = useState<Line[]>([])
   const [ocrText, setOcrText] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -24,6 +25,7 @@ export function CaptureOverlay({ image, onCancel }: Props) {
   const resetToSelect = useCallback(() => {
     setRect(null)
     setPhase('select')
+    setMode(null)
     setLines([])
     setOcrText('')
     setError(null)
@@ -32,9 +34,10 @@ export function CaptureOverlay({ image, onCancel }: Props) {
   }, [])
 
   const doQuick = useCallback(
-    async (r: Rect, imgSrc: string) => {
+    async (r: Rect, imgSrc: string, m: 'ocr' | 'translate') => {
       setPhase('loading')
       setError(null)
+      setAllFallback(false)
       try {
         const img = new Image()
         img.src = imgSrc
@@ -56,30 +59,50 @@ export function CaptureOverlay({ image, onCancel }: Props) {
         ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh)
         const cropped = canvas.toDataURL('image/png')
         setCropDataURL(cropped)
-        const res = await window.api.translate.quick(cropped)
-        if (res.error || !res.ocr.text) {
-          setError(res.error === 'NO_TEXT' ? '未识别到文字' : '识别失败，请重试')
-          setLines([])
-          setOcrText('')
+        setMode(m)
+        if (m === 'ocr') {
+          // 仅 OCR: 不走网络翻译，直接本地识别
+          const ocr = await window.api.ocr.recognize(cropped)
+          if (ocr.error || !ocr.text) {
+            setError(ocr.error === 'NO_TEXT' ? '未识别到文字' : '识别失败，请重试')
+            setLines([])
+            setOcrText('')
+          } else {
+            setOcrText(ocr.text)
+            setLines((ocr.blocks ?? []).map((b) => ({ ...b, translated: b.text })))
+          }
         } else {
-          setLines(res.lines as Line[])
-          setOcrText(res.ocr.text)
-          setAllFallback(!!res.allFallback)
+          const res = await window.api.translate.quick(cropped)
+          if (res.error || !res.ocr.text) {
+            setError(res.error === 'NO_TEXT' ? '未识别到文字' : '识别失败，请重试')
+            setLines([])
+            setOcrText('')
+          } else {
+            setLines(res.lines as Line[])
+            setOcrText(res.ocr.text)
+            setAllFallback(!!res.allFallback)
+          }
         }
         setPhase('result')
       } catch (e) {
         console.error('[overlay] quick failed', e)
-        setError('翻译失败，请重试')
+        setError('识别失败，请重试')
         setPhase('result')
       }
     },
     []
   )
 
-  const confirm = useCallback(() => {
+  const confirmTranslate = useCallback(() => {
     if (!rect || !image) return
     if (rect.width < 10 || rect.height < 10) return
-    void doQuick(rect, image)
+    void doQuick(rect, image, 'translate')
+  }, [rect, image, doQuick])
+
+  const confirmOcr = useCallback(() => {
+    if (!rect || !image) return
+    if (rect.width < 10 || rect.height < 10) return
+    void doQuick(rect, image, 'ocr')
   }, [rect, image, doQuick])
 
   // ESC / Enter
@@ -95,11 +118,11 @@ export function CaptureOverlay({ image, onCancel }: Props) {
           }
         } else onCancel()
       }
-      if (e.key === 'Enter' && rect && phase === 'select') void confirm()
+      if (e.key === 'Enter' && rect && phase === 'select') void confirmTranslate()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [rect, phase, onCancel, confirm, resetToSelect])
+  }, [rect, phase, onCancel, confirmTranslate, resetToSelect])
 
   // 拖拽
   useEffect(() => {
@@ -142,6 +165,10 @@ export function CaptureOverlay({ image, onCancel }: Props) {
     setRect({ x, y, width: 0, height: 0 })
   }
 
+  const copyOcrText = async () => {
+    await navigator.clipboard.writeText(ocrText)
+  }
+
   const copyAll = async () => {
     const all = lines.map((l) => l.translated).join('\n')
     await navigator.clipboard.writeText(all || ocrText)
@@ -155,8 +182,9 @@ export function CaptureOverlay({ image, onCancel }: Props) {
         rect: rect!,
         dataURL: cropDataURL!,
         ocrText,
-        zhFast: allZh,
-        lang: lines.length ? 'unknown' : 'auto'
+        zhFast: mode === 'translate' ? allZh : undefined,
+        lang: lines.length ? 'unknown' : 'auto',
+        mode: mode ?? 'translate'
       } as unknown as { rect: Rect; dataURL: string })
     } else {
       onCancel()
@@ -188,8 +216,8 @@ export function CaptureOverlay({ image, onCancel }: Props) {
       {/* 顶部提示 */}
       <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-black/70 text-white text-xs px-3 py-1.5 rounded-full flex items-center gap-3">
         {phase === 'select' && <><span>拖拽框选区域</span><span className="opacity-60">|</span><span>ESC 退出</span></>}
-        {phase === 'loading' && <span>正在识别翻译...</span>}
-        {phase === 'result' && <><span>已覆盖为中文</span><span className="opacity-60">|</span><span>ESC 返回</span></>}
+        {phase === 'loading' && <span>正在识别{mode === 'translate' ? '并翻译' : ''}...</span>}
+        {phase === 'result' && <><span>{mode === 'ocr' ? '已识别文本' : '已覆盖为中文'}</span><span className="opacity-60">|</span><span>ESC 返回</span></>}
         <button onClick={onCancel} className="ml-2 px-2 py-0.5 bg-white/20 hover:bg-white/30 rounded text-xs">
           {phase === 'result' ? '关闭' : '退出'}
         </button>
@@ -200,11 +228,14 @@ export function CaptureOverlay({ image, onCancel }: Props) {
         <>
           <div className="absolute border-2 border-blue-400 bg-white/10 pointer-events-none" style={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height }} />
           <div className="absolute bg-black/70 text-white text-xs px-2 py-1 rounded pointer-events-none" style={{ left: Math.max(0, rect.x), top: Math.max(0, rect.y - 24) }}>
-            {Math.round(rect.width)} × {Math.round(rect.height)} — 回车确认 / ESC 取消
+            {Math.round(rect.width)} × {Math.round(rect.height)} — 回车翻译 / ESC 取消
           </div>
-          <div className="absolute flex gap-2" style={{ left: rect.x + rect.width / 2 - 40, top: rect.y + rect.height + 8 }}>
-            <button onMouseDown={(e) => e.stopPropagation()} onClick={confirm} className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm shadow">
-              翻译为中文
+          <div className="absolute flex gap-2" style={{ left: rect.x + rect.width / 2 - 90, top: rect.y + rect.height + 8 }}>
+            <button onMouseDown={(e) => e.stopPropagation()} onClick={confirmOcr} className="px-3 py-1 bg-white hover:bg-gray-100 text-gray-800 rounded text-sm shadow border">
+              仅 OCR
+            </button>
+            <button onMouseDown={(e) => e.stopPropagation()} onClick={confirmTranslate} className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm shadow">
+              OCR+翻译
             </button>
           </div>
         </>
@@ -213,7 +244,7 @@ export function CaptureOverlay({ image, onCancel }: Props) {
       {/* 加载 */}
       {phase === 'loading' && (
         <div className="absolute inset-0 flex items-center justify-center">
-          <div className="bg-black/70 text-white px-4 py-3 rounded-lg text-sm">正在识别并翻译...</div>
+          <div className="bg-black/70 text-white px-4 py-3 rounded-lg text-sm">正在识别{mode === 'translate' ? '并翻译' : ''}...</div>
         </div>
       )}
 
@@ -281,16 +312,30 @@ export function CaptureOverlay({ image, onCancel }: Props) {
           )}
           {/* 底部操作条 */}
           <div className="absolute left-1/2 -translate-x-1/2 bg-black/75 backdrop-blur text-white rounded-full px-2 py-1.5 flex items-center gap-1.5 shadow-lg" style={{ top: rect.y + rect.height + 12 }}>
-            <button onClick={resetToSelect} className="px-3 py-1 rounded-full hover:bg-white/15 text-sm">
-              重试
-            </button>
-            <span className="opacity-30">|</span>
-            <button onClick={goPrecise} className="px-3 py-1 rounded-full bg-blue-600 hover:bg-blue-700 text-sm">
-              主页精译
-            </button>
-            <button onClick={copyAll} className="px-3 py-1 rounded-full hover:bg-white/15 text-sm">
-              复制全部
-            </button>
+            {mode === 'ocr' ? (
+              <>
+                <button onClick={copyOcrText} className="px-3 py-1 rounded-full bg-white/15 hover:bg-white/25 text-sm">
+                  复制文本
+                </button>
+                <span className="opacity-30">|</span>
+                <button onClick={goPrecise} className="px-3 py-1 rounded-full bg-blue-600 hover:bg-blue-700 text-sm">
+                  主页精译
+                </button>
+              </>
+            ) : (
+              <>
+                <button onClick={resetToSelect} className="px-3 py-1 rounded-full hover:bg-white/15 text-sm">
+                  重试
+                </button>
+                <span className="opacity-30">|</span>
+                <button onClick={goPrecise} className="px-3 py-1 rounded-full bg-blue-600 hover:bg-blue-700 text-sm">
+                  主页精译
+                </button>
+                <button onClick={copyAll} className="px-3 py-1 rounded-full hover:bg-white/15 text-sm">
+                  复制全部
+                </button>
+              </>
+            )}
             <button onClick={onCancel} className="px-3 py-1 rounded-full hover:bg-white/15 text-sm">
               关闭
             </button>

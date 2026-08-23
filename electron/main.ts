@@ -67,8 +67,10 @@ function createMainWindow() {
   const preload = getPreloadPath()
   console.log('[main] createMainWindow preload:', preload, 'exists:', existsSync(preload))
   mainWindow = new BrowserWindow({
-    width: 420,
-    height: 600,
+    width: 760,
+    height: 680,
+    minWidth: 560,
+    minHeight: 520,
     show: true,
     webPreferences: {
       preload,
@@ -166,7 +168,7 @@ app.whenReady().then(() => {
     /* 由 triggerCapture 的 once 监听消费 */
   })
 
-  ipcMain.handle('capture:done', async (_e, data: { rect?: { x: number; y: number; width: number; height: number }; dataURL: string; ocrText?: string; zhFast?: string; lang?: string }) => {
+  ipcMain.handle('capture:done', async (_e, data: { rect?: { x: number; y: number; width: number; height: number }; dataURL: string; ocrText?: string; zhFast?: string; lang?: string; mode?: 'ocr' | 'translate' }) => {
     hideOverlay()
     // 转发给主窗口 (精译工作台)
     if (mainWindow && !mainWindow.isDestroyed()) {

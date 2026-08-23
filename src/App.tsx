@@ -5,7 +5,8 @@ import { useTranslate } from '@/hooks/useTranslate'
 export default function App() {
   const isOverlay = new URLSearchParams(window.location.search).has('overlay')
   const [overlayImage, setOverlayImage] = useState<string | null>(null)
-  const [captured, setCaptured] = useState<{ dataURL: string; ocrText?: string; zhFast?: string; lang?: string } | null>(null)
+  const [overlayNonce, setOverlayNonce] = useState(0)
+  const [captured, setCaptured] = useState<{ dataURL: string; ocrText?: string; zhFast?: string; lang?: string; mode?: 'ocr' | 'translate' } | null>(null)
   const { translate, result, refined, loading } = useTranslate()
 
   // Overlay: 加载全屏截图 (挂载时一次 + 每次热键触发 refresh 重新截屏)
@@ -18,6 +19,8 @@ export default function App() {
     }
     let cancelled = false
     const loadSources = () => {
+      // 先清空旧图，避免残留上次截图
+      setOverlayImage(null)
       window.api.capture
         .getSources()
         .then((sources) => {
@@ -32,7 +35,11 @@ export default function App() {
         })
     }
     loadSources()
-    window.api.overlay.onRefresh(loadSources)
+    window.api.overlay.onRefresh(() => {
+      // 强制 CaptureOverlay 全新挂载（清空上次选区/结果）
+      setOverlayNonce((n) => n + 1)
+      loadSources()
+    })
     return () => {
       cancelled = true
     }
@@ -53,8 +60,8 @@ export default function App() {
   // 主窗口: 接收遮罩"主页精译"传回的数据
   useEffect(() => {
     if (isOverlay) return
-    const handler = (data: { dataURL: string; ocrText?: string; zhFast?: string; lang?: string }) => {
-      setCaptured({ dataURL: data.dataURL, ocrText: data.ocrText, zhFast: data.zhFast, lang: data.lang })
+    const handler = (data: { dataURL: string; ocrText?: string; zhFast?: string; lang?: string; mode?: 'ocr' | 'translate' }) => {
+      setCaptured({ dataURL: data.dataURL, ocrText: data.ocrText, zhFast: data.zhFast, lang: data.lang, mode: data.mode })
     }
     window.api.capture.onDone(handler)
   }, [isOverlay])
@@ -84,7 +91,7 @@ export default function App() {
         </div>
       )
     }
-    return <CaptureOverlay image={overlayImage} onCancel={handleOverlayCancel} />
+    return <CaptureOverlay key={overlayNonce} image={overlayImage} onCancel={handleOverlayCancel} />
   }
 
   // 主窗口精译: 用 LLM 精译
@@ -117,24 +124,44 @@ export default function App() {
         {captured && (
           <div className="bg-white p-4 rounded-xl shadow-sm">
             <h3 className="font-medium text-sm mb-3">上次截图 · 精译工作台</h3>
-            <div className="flex gap-4">
-              <img src={captured.dataURL} alt="captured" className="w-[260px] h-fit border rounded bg-white" />
-              <div className="flex-1 min-w-0">
-                <div className="text-xs text-gray-500 mb-1">原文（OCR）</div>
-                <div className="text-sm bg-gray-50 p-2 rounded whitespace-pre-wrap break-words max-h-[120px] overflow-auto">{captured.ocrText ?? '—'}</div>
-                <div className="text-xs text-gray-500 mt-3 mb-1 flex items-center justify-between">
-                  <span>快译（Google 免Key）</span>
-                  <span className="text-[10px] px-1 py-0.5 bg-emerald-50 text-emerald-600 rounded">覆盖已显示</span>
+            <div className="flex flex-row gap-4 items-start">
+              <img
+                src={captured.dataURL}
+                alt="captured"
+                className="w-[300px] max-w-[42%] h-auto max-h-[380px] object-contain border rounded bg-white shrink-0"
+              />
+              <div className="flex-1 min-w-0 space-y-3">
+                <div>
+                  <div className="text-xs text-gray-500 mb-1 flex items-center justify-between">
+                    <span>原文（OCR）</span>
+                    <button
+                      onClick={async () => {
+                        if (captured.ocrText) await navigator.clipboard.writeText(captured.ocrText)
+                      }}
+                      className="text-blue-600 hover:underline"
+                    >
+                      复制原文
+                    </button>
+                  </div>
+                  <div className="text-sm bg-gray-50 p-2 rounded whitespace-pre-wrap break-words max-h-[130px] overflow-auto">{captured.ocrText ?? '—'}</div>
                 </div>
-                <div className="text-sm bg-blue-50 p-2 rounded whitespace-pre-wrap break-words">{captured.zhFast ?? '—'}</div>
+                {captured.mode !== 'ocr' && (
+                  <div>
+                    <div className="text-xs text-gray-500 mb-1 flex items-center justify-between">
+                      <span>快译（免Key 网络引擎）</span>
+                      <span className="text-[10px] px-1 py-0.5 bg-emerald-50 text-emerald-600 rounded">覆盖已显示</span>
+                    </div>
+                    <div className="text-sm bg-blue-50 p-2 rounded whitespace-pre-wrap break-words">{captured.zhFast ?? '—'}</div>
+                  </div>
+                )}
                 {result?.fast && (
-                  <div className="mt-3">
+                  <div>
                     <div className="text-xs text-gray-500 mb-1">精译（LLM）· {result.provider}</div>
                     <div className="text-sm bg-indigo-50 p-2 rounded whitespace-pre-wrap break-words">{result.fast}</div>
                     {refined && <div className="text-sm bg-indigo-100 p-2 rounded mt-1 whitespace-pre-wrap">{refined.text}</div>}
                   </div>
                 )}
-                <div className="flex gap-2 mt-3">
+                <div className="flex gap-2 pt-1">
                   <button onClick={handlePrecise} disabled={loading || !captured.ocrText} className="px-4 py-1.5 bg-indigo-600 disabled:opacity-50 text-white rounded text-sm">
                     {loading ? '精译中...' : '用 LLM 精译'}
                   </button>

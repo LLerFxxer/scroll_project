@@ -5,8 +5,8 @@ interface Window {
     capture: {
       start(): Promise<void>
       getSources(): Promise<{ id: string; name: string; dataURL: string; scaleFactor?: number }[]>
-      done(data: { rect?: { x: number; y: number; width: number; height: number }; dataURL: string; ocrText?: string; zhFast?: string; lang?: string }): Promise<void>
-      onDone(cb: (data: { rect?: { x: number; y: number; width: number; height: number }; dataURL: string; ocrText?: string; zhFast?: string; lang?: string }) => void): void
+      done(data: { rect?: { x: number; y: number; width: number; height: number }; dataURL: string; ocrText?: string; zhFast?: string; lang?: string; mode?: 'ocr' | 'translate' }): Promise<void>
+      onDone(cb: (data: { rect?: { x: number; y: number; width: number; height: number }; dataURL: string; ocrText?: string; zhFast?: string; lang?: string; mode?: 'ocr' | 'translate' }) => void): void
     }
     overlay: {
       close(): Promise<void>

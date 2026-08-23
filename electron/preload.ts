@@ -7,9 +7,9 @@ contextBridge.exposeInMainWorld('api', {
   capture: {
     start: () => ipcRenderer.invoke('capture:start'),
     getSources: () => ipcRenderer.invoke('capture:getSources'),
-    done: (data: { rect?: { x: number; y: number; width: number; height: number }; dataURL: string; ocrText?: string; zhFast?: string; lang?: string }) =>
+    done: (data: { rect?: { x: number; y: number; width: number; height: number }; dataURL: string; ocrText?: string; zhFast?: string; lang?: string; mode?: 'ocr' | 'translate' }) =>
       ipcRenderer.invoke('capture:done', data),
-    onDone: (cb: (data: { rect?: { x: number; y: number; width: number; height: number }; dataURL: string; ocrText?: string; zhFast?: string; lang?: string }) => void) => {
+    onDone: (cb: (data: { rect?: { x: number; y: number; width: number; height: number }; dataURL: string; ocrText?: string; zhFast?: string; lang?: string; mode?: 'ocr' | 'translate' }) => void) => {
       ipcRenderer.on('capture:done', (_e, data) => cb(data))
     }
   },
