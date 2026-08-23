@@ -143,9 +143,9 @@ app.whenReady().then(() => {
     hideOverlay()
   })
 
-  ipcMain.handle('capture:done', async (_e, data: { rect: { x: number; y: number; width: number; height: number }; dataURL: string }) => {
+  ipcMain.handle('capture:done', async (_e, data: { rect?: { x: number; y: number; width: number; height: number }; dataURL: string; ocrText?: string; zhFast?: string; lang?: string }) => {
     hideOverlay()
-    // 转发给主窗口
+    // 转发给主窗口 (精译工作台)
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('capture:done', data)
       mainWindow.show()
@@ -193,6 +193,28 @@ app.whenReady().then(() => {
         if (win && !win.isDestroyed()) win.webContents.send('translate:refined', p)
       }
     })
+  })
+
+  // 快译覆盖: 截图 -> OCR blocks -> Google 免费逐行译中 (免Key, 遮罩内原位覆盖)
+  ipcMain.handle('translate:quick', async (_e, dataURL: string) => {
+    if (!ocrService) {
+      const { createOcrService } = await import('../src/services/ocrService')
+      ocrService = createOcrService('tesseract')
+    }
+    const ocr = await ocrService.recognize(dataURL)
+    if (!ocr.text || ocr.error) {
+      return { ocr, lines: [], error: ocr.error ?? 'NO_TEXT' }
+    }
+    if (ocr.lang === 'zh') {
+      const lines = (ocr.blocks ?? []).map((b) => ({ ...b, translated: b.text }))
+      return { ocr, lines }
+    }
+    const { GoogleFreeProvider } = await import('../src/services/googleFreeProvider')
+    const gp = new GoogleFreeProvider()
+    const inputs = (ocr.blocks ?? []).map((b) => b.text)
+    const translated = await gp.translateLines(inputs, ocr.lang, 'zh')
+    const lines = (ocr.blocks ?? []).map((b, i) => ({ ...b, translated: translated[i] ?? b.text }))
+    return { ocr, lines }
   })
 
   // 兜底：任何时候按 Esc 都尝试隐藏遮罩（防止渲染卡死）

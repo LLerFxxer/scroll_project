@@ -1,5 +1,5 @@
 import { createWorker, type Worker } from 'tesseract.js'
-import type { IOcrService, OcrResult, Lang } from '../types/ocr'
+import type { IOcrService, OcrResult, Lang, TextBlock } from '../types/ocr'
 import { logger } from '../lib/logger'
 
 const TESS_LANGS: string[] = ['chi_sim', 'eng', 'kor']
@@ -50,17 +50,30 @@ export class TesseractOcrService implements IOcrService {
     const start = Date.now()
     try {
       const worker = await this.ensureWorker()
-      const { data } = await worker.recognize(image)
+      const { data } = await worker.recognize(image, {}, { text: true, blocks: true })
       const text = (data.text ?? '').trim()
       const confidence = data.confidence ?? 0
       const lang = this.detectLang(text)
       const latencyMs = Date.now() - start
       logger.info('[OcrService] done', { lang, confidence, latencyMs, textLen: text.length })
 
+      // 行级 blocks (bbox 物理像素 x0,y0,x1,y1 -> [x,y,w,h])
+      const lines: TextBlock[] = []
+      for (const block of data.blocks ?? []) {
+        for (const para of block.paragraphs ?? []) {
+          for (const line of para.lines ?? []) {
+            const t = (line.text ?? '').trim()
+            if (!t) continue
+            const b = line.bbox
+            lines.push({ text: t, bbox: [b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0], confidence: line.confidence ?? confidence })
+          }
+        }
+      }
+
       if (!text || confidence < 30) {
         return { text, lang, confidence, error: text ? 'LOW_CONFIDENCE' : 'NO_TEXT' }
       }
-      return { text, lang, confidence }
+      return { text, lang, confidence, blocks: lines }
     } catch (e) {
       logger.error('[OcrService] recognize failed', e)
       return { text: '', lang: 'auto', confidence: 0, error: 'ENGINE_ERROR' }

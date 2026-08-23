@@ -13,7 +13,7 @@ export type TranslateRequest = z.infer<typeof TranslateRequestSchema>
 export type TranslateResponse = {
   fast: string
   refined?: string
-  provider: 'deepl' | 'opencode' | 'fallback'
+  provider: 'deepl' | 'opencode' | 'google' | 'fallback'
   detectedFrom: Lang
   latencyMs: { fast: number; refined?: number }
   requestId?: number

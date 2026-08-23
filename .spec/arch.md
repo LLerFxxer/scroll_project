@@ -91,19 +91,20 @@ export interface ICaptureService {
 }
 ```
 
-## 4. 数据流 (截图一次完整链路)
+## 4. 数据流 (v2: 原位覆盖式，复刻有道)
 
 ```
-用户按 Ctrl+Shift+A
- -> main: globalShortcut 触发 -> overlay.show() (fullscreen transparent)
- -> 用户拖拽 rect -> overlay 截图 desktopCapturer.getSource -> crop -> base64
- -> IPC: 'capture:done' -> 渲染进程
- -> ocrService.recognize(base64) -> {text}
- -> translateRouter.translate({text, to: autoTarget}) 
-     -> 立即渲染 fast (DeepL)
-     -> 800ms后 refined 替换 (opencode LLM)
- -> TranslateCard 展示
- -> 用户点保存 -> lib/image.save(base64, overlayText?) -> storageService.addHistory()
+Ctrl+Shift+A -> overlay 显示(不透明,截图作背景)
+ -> 拖拽框选 rect -> crop(dataURL)
+ -> [快路径|遮罩内完成] IPC translate:quick:
+      ocrService.recognizeBlocks(dataURL)  // 行级 text+bbox+confidence
+      -> detectLang; 若 zh 直接返回 blocks
+      -> GoogleFreeProvider.translateLines(blocks) 并行逐行 tl=zh-CN (~100-300ms)
+      -> 返回 {scale, imageW/H, lines:[{bbox,text,translated}]}
+ -> CaptureOverlay phase='result': 按 bbox/scale 白底黑字覆盖渲染
+    操作条: 重试 | 主页精译 | 复制全部 | 关闭
+ -> [精路径] 主页精译按钮 -> capture:done{text,dataURL,zhFast} -> 主窗口
+      主窗口展示 快译 + "LLM 精译"按钮(走 translateRouter DeepL/opencode)
 ```
 
 状态管理: 轻量 `zustand` 或 `React Context`, 不引入 Redux
