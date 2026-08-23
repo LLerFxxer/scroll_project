@@ -18,4 +18,5 @@
 [2026-08-23 00:35] 修复截图两问题 — ①主窗隐藏: triggerCapture 先 hide() + overlay refresh/ready 每次重新截屏(消除陈旧启动截图含主窗居中) + 托盘1x1兜底图标; ②译文不显示: Google端点国内不可达, 快译改 Edge api.edge.microsoft.com 优先+Google回退; 17 tests passed, 提交 15f094c 已推送
 [2026-08-23 00:42] 修复译文仍显示原文 — 日志确认 OCR 正常(en 95) 但 Edge+Google 均失败静默回退; 快译链升级 Edge(+UA头)->Google->MyMemory 三引擎+逐行失败日志, 全回退时遮罩琥珀色提示条(不再静默); 20 tests passed, 提交 91b52d0 已推送
 [2026-08-23 00:50] 4项交互优化 — ①主窗口复制原文按钮 ②遮罩双按钮(仅OCR/OCR+翻译, 分模式操作条) ③每次截图 nonce 强制重置遮罩+先清旧图 ④主窗 760x680 + 工作台布局 object-contain 不挤压; 提交 8c9ba71 已推送
+[2026-08-23 01:05] 4项样式/功能 — ①覆盖盒黑底白字(用户指定) ②排版修复: 中文字体栈+去break-all+按译文长度自适应宽度 ③遮罩结果态显示原文语言 ④主窗口复制图片到剪贴板(clipboard.writeImage); 提交 dab1ec6 已推送
 
