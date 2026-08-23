@@ -34,6 +34,9 @@ contextBridge.exposeInMainWorld('api', {
   save: {
     saveImage: (dataURL: string, opts?: unknown) => ipcRenderer.invoke('save:saveImage', dataURL, opts)
   },
+  clipboard: {
+    copyImage: (dataURL: string) => ipcRenderer.invoke('clipboard:copyImage', dataURL)
+  },
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
     set: (patch: unknown) => ipcRenderer.invoke('settings:set', patch)

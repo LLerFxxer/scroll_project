@@ -1,4 +1,4 @@
-import { app, BrowserWindow, globalShortcut, Tray, Menu, ipcMain, desktopCapturer, screen, nativeImage } from 'electron'
+import { app, BrowserWindow, globalShortcut, Tray, Menu, ipcMain, desktopCapturer, screen, nativeImage, clipboard } from 'electron'
 import { join } from 'path'
 import { existsSync, readFileSync } from 'fs'
 import { createOverlayWindow, getOverlayWindow, hideOverlay, showOverlay } from './overlay'
@@ -199,6 +199,14 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('app:getVersion', () => app.getVersion())
+
+  // 复制截图图片到系统剪贴板 (可在 QQ/微信/资源管理器粘贴)
+  ipcMain.handle('clipboard:copyImage', async (_e, dataURL: string) => {
+    const img = nativeImage.createFromDataURL(dataURL)
+    if (img.isEmpty()) throw new Error('IMAGE_EMPTY')
+    clipboard.writeImage(img)
+    console.log('[main] image copied to clipboard')
+  })
 
   // OCR: 主进程运行 tesseract worker，避免阻塞渲染进程 UI
   // 注意：首次调用会下载语言包 (~15MB)，之后走缓存

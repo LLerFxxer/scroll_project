@@ -24,6 +24,9 @@ interface Window {
     save: {
       saveImage(dataURL: string, opts?: import('./src/types/capture').SaveOpts): Promise<{ path: string }>
     }
+    clipboard: {
+      copyImage(dataURL: string): Promise<void>
+    }
     settings: {
       get(): Promise<import('./src/types/settings').AppSettings>
       set(patch: Partial<import('./src/types/settings').AppSettings>): Promise<void>

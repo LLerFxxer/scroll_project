@@ -161,7 +161,7 @@ export default function App() {
                     {refined && <div className="text-sm bg-indigo-100 p-2 rounded mt-1 whitespace-pre-wrap">{refined.text}</div>}
                   </div>
                 )}
-                <div className="flex gap-2 pt-1">
+                <div className="flex gap-2 pt-1 flex-wrap">
                   <button onClick={handlePrecise} disabled={loading || !captured.ocrText} className="px-4 py-1.5 bg-indigo-600 disabled:opacity-50 text-white rounded text-sm">
                     {loading ? '精译中...' : '用 LLM 精译'}
                   </button>
@@ -173,6 +173,14 @@ export default function App() {
                     className="px-3 py-1.5 bg-white border rounded text-sm"
                   >
                     复制译文
+                  </button>
+                  <button
+                    onClick={async () => {
+                      await window.api.clipboard.copyImage(captured.dataURL)
+                    }}
+                    className="px-3 py-1.5 bg-white border rounded text-sm"
+                  >
+                    复制图片
                   </button>
                   <button onClick={() => setCaptured(null)} className="px-3 py-1.5 text-sm text-gray-500">
                     清除

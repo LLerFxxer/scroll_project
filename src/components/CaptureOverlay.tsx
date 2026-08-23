@@ -1,12 +1,46 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 
 type Rect = { x: number; y: number; width: number; height: number }
+type Line = { text: string; bbox: [number, number, number, number]; confidence: number; translated: string }
 type Props = {
   image: string | null // 全屏截图 dataURL (物理像素)
   onCancel: () => void
 }
 
-type Line = { text: string; bbox: [number, number, number, number]; confidence: number; translated: string }
+const LANG_LABEL: Record<string, string> = { zh: '中文', en: 'English', ko: 'Korean' }
+
+// 覆盖盒样式：黑底白字 + 中文字体栈 + 自适应宽度(不拉伸不挤压)
+const BOX_FONT_FAMILY = "'PingFang SC','Microsoft YaHei','Noto Sans SC','Segoe UI',sans-serif"
+
+function lineBoxStyle(ln: Line, rect: Rect, scale: number): React.CSSProperties {
+  const [x, y, w, h] = ln.bbox
+  const left = rect.x + x / scale
+  const top = rect.y + y / scale
+  const fontSize = Math.max(10, Math.min(60, (h / scale) * 0.8))
+  const estWidth = ln.translated.length * fontSize // CJK 方块字≈字号宽
+  const width = Math.max(w / scale, Math.min(estWidth + 10, 720))
+  return {
+    left,
+    top,
+    minWidth: w / scale,
+    width,
+    minHeight: h / scale,
+    padding: '2px 6px',
+    fontSize,
+    backgroundColor: 'rgba(0,0,0,0.88)',
+    color: '#fff',
+    fontFamily: BOX_FONT_FAMILY,
+    lineHeight: 1.2,
+    letterSpacing: 0,
+    whiteSpace: 'pre-wrap',
+    overflowWrap: 'break-word',
+    overflow: 'hidden',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    textAlign: 'center'
+  }
+}
 
 export function CaptureOverlay({ image, onCancel }: Props) {
   const [dragging, setDragging] = useState(false)
@@ -18,6 +52,7 @@ export function CaptureOverlay({ image, onCancel }: Props) {
   const [ocrText, setOcrText] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [allFallback, setAllFallback] = useState(false)
+  const [ocrLang, setOcrLang] = useState<string>('')
   const [scale, setScale] = useState(1)
   const [cropDataURL, setCropDataURL] = useState<string | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -30,6 +65,7 @@ export function CaptureOverlay({ image, onCancel }: Props) {
     setOcrText('')
     setError(null)
     setAllFallback(false)
+    setOcrLang('')
     setCropDataURL(null)
   }, [])
 
@@ -67,8 +103,10 @@ export function CaptureOverlay({ image, onCancel }: Props) {
             setError(ocr.error === 'NO_TEXT' ? '未识别到文字' : '识别失败，请重试')
             setLines([])
             setOcrText('')
+            setOcrLang('')
           } else {
             setOcrText(ocr.text)
+            setOcrLang(ocr.lang)
             setLines((ocr.blocks ?? []).map((b) => ({ ...b, translated: b.text })))
           }
         } else {
@@ -77,9 +115,11 @@ export function CaptureOverlay({ image, onCancel }: Props) {
             setError(res.error === 'NO_TEXT' ? '未识别到文字' : '识别失败，请重试')
             setLines([])
             setOcrText('')
+            setOcrLang('')
           } else {
             setLines(res.lines as Line[])
             setOcrText(res.ocr.text)
+            setOcrLang(res.ocr.lang)
             setAllFallback(!!res.allFallback)
           }
         }
@@ -217,7 +257,9 @@ export function CaptureOverlay({ image, onCancel }: Props) {
       <div className="absolute top-3 left-1/2 -translate-x-1/2 bg-black/70 text-white text-xs px-3 py-1.5 rounded-full flex items-center gap-3">
         {phase === 'select' && <><span>拖拽框选区域</span><span className="opacity-60">|</span><span>ESC 退出</span></>}
         {phase === 'loading' && <span>正在识别{mode === 'translate' ? '并翻译' : ''}...</span>}
-        {phase === 'result' && <><span>{mode === 'ocr' ? '已识别文本' : '已覆盖为中文'}</span><span className="opacity-60">|</span><span>ESC 返回</span></>}
+        {phase === 'result' && (
+          <>{mode === 'ocr' ? <span>已识别文本 · {LANG_LABEL[ocrLang] ?? ocrLang}</span> : <span>已覆盖为中文 · 原文 {LANG_LABEL[ocrLang] ?? ocrLang}</span>}<span className="opacity-60">|</span><span>ESC 返回</span></>
+        )}
         <button onClick={onCancel} className="ml-2 px-2 py-0.5 bg-white/20 hover:bg-white/30 rounded text-xs">
           {phase === 'result' ? '关闭' : '退出'}
         </button>
@@ -248,7 +290,7 @@ export function CaptureOverlay({ image, onCancel }: Props) {
         </div>
       )}
 
-      {/* 覆盖结果：白底黑字 */}
+      {/* 覆盖结果：黑底白字 */}
       {phase === 'result' && rect && (
         <>
           {/* 原选区边框仍保留 */}
@@ -257,58 +299,24 @@ export function CaptureOverlay({ image, onCancel }: Props) {
             <div className="absolute bg-red-600 text-white text-sm px-3 py-2 rounded shadow" style={{ left: rect.x, top: rect.y }}>
               {error}
             </div>
-          ) : allFallback ? (
-            <>
-              <div className="absolute bg-amber-500 text-white text-xs px-3 py-2 rounded shadow max-w-[300px]" style={{ left: rect.x, top: rect.y }}>
-                快译不可用（网络受限）。可在主页用 LLM 精译，或点「重试」。
-              </div>
-              {lines.map((ln, i) => {
-                const [x, y, w, h] = ln.bbox
-                const left = rect.x + x / scale
-                const top = rect.y + y / scale
-                const width = w / scale
-                const height = h / scale
-                const fontSize = Math.max(10, Math.min(60, height * 0.82))
-                return (
-                  <div
-                    key={i}
-                    className="absolute flex items-center justify-center text-center leading-tight rounded px-1 overflow-hidden opacity-60"
-                    style={{ left, top, width, height, fontSize, backgroundColor: 'rgba(255,255,255,0.85)', color: '#111', fontWeight: 500 }}
-                    title={ln.text}
-                  >
-                    <span className="px-1 break-all">{ln.translated}</span>
-                  </div>
-                )
-              })}
-            </>
           ) : (
-            lines.map((ln, i) => {
-              const [x, y, w, h] = ln.bbox
-              const left = rect.x + x / scale
-              const top = rect.y + y / scale
-              const width = w / scale
-              const height = h / scale
-              const fontSize = Math.max(10, Math.min(60, height * 0.82))
-              return (
+            <>
+              {allFallback && (
+                <div className="absolute bg-amber-500 text-white text-xs px-3 py-2 rounded shadow max-w-[300px]" style={{ left: rect.x, top: rect.y }}>
+                  快译不可用（网络受限）。可在主页用 LLM 精译，或点「重试」。
+                </div>
+              )}
+              {lines.map((ln, i) => (
                 <div
                   key={i}
-                  className="absolute flex items-center justify-center text-center leading-tight rounded px-1 overflow-hidden"
-                  style={{
-                    left,
-                    top,
-                    width,
-                    height,
-                    fontSize,
-                    backgroundColor: 'rgba(255,255,255,0.92)',
-                    color: '#111',
-                    fontWeight: 500
-                  }}
+                  className={`absolute rounded ${allFallback ? 'opacity-60' : ''}`}
+                  style={lineBoxStyle(ln, rect, scale)}
                   title={ln.text}
                 >
-                  <span className="px-1 break-all">{ln.translated}</span>
+                  {ln.translated}
                 </div>
-              )
-            })
+              ))}
+            </>
           )}
           {/* 底部操作条 */}
           <div className="absolute left-1/2 -translate-x-1/2 bg-black/75 backdrop-blur text-white rounded-full px-2 py-1.5 flex items-center gap-1.5 shadow-lg" style={{ top: rect.y + rect.height + 12 }}>
