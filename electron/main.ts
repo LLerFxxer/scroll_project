@@ -228,7 +228,7 @@ app.whenReady().then(() => {
     })
   })
 
-  // 快译覆盖: 截图 -> OCR blocks -> Edge/Google/MyMemory 免费逐行译中 (免Key, 遮罩内原位覆盖)
+  // 快译覆盖: 截图 -> OCR -> 整段翻译为中文 (免Key, 段落面板显示)
   ipcMain.handle('translate:quick', async (_e, dataURL: string) => {
     if (!ocrService) {
       const { createOcrService } = await import('../src/services/ocrService')
@@ -236,23 +236,24 @@ app.whenReady().then(() => {
     }
     const ocr = await ocrService.recognize(dataURL)
     if (!ocr.text || ocr.error) {
-      return { ocr, lines: [], error: ocr.error ?? 'NO_TEXT' }
+      return { ocr, full: '', error: ocr.error ?? 'NO_TEXT' }
     }
     if (ocr.lang === 'zh') {
-      const lines = (ocr.blocks ?? []).map((b) => ({ ...b, translated: b.text }))
-      return { ocr, lines }
+      return { ocr, full: ocr.text }
     }
+    // 整段一次翻译(上下文完整, 不截断), 失败回退原文
     const { GoogleFreeProvider } = await import('../src/services/googleFreeProvider')
     const gp = new GoogleFreeProvider()
-    const inputs = (ocr.blocks ?? []).map((b) => b.text)
-    const translated = await gp.translateLines(inputs, ocr.lang, 'zh')
-    const lines = (ocr.blocks ?? []).map((b, i) => ({ ...b, translated: translated[i] ?? b.text }))
-    // 全部行都回退原文 => 快译不可用，遮罩应明确提示
-    const allFallback = inputs.length > 0 && translated.every((t, i) => t === inputs[i])
-    if (allFallback) {
-      console.warn('[main] quick translate: all lines fell back to original')
+    let full: string
+    try {
+      full = await gp.translate(ocr.text, ocr.lang, 'zh', 8000)
+    } catch (e) {
+      console.warn('[main] quick translate failed, allFallback:', e instanceof Error ? e.message : e)
+      full = ocr.text
     }
-    return { ocr, lines, allFallback }
+    const allFallback = full === ocr.text
+    if (allFallback) console.warn('[main] quick translate: all lines fell back to original')
+    return { ocr, full, allFallback }
   })
 
   // 兜底：任何时候按 Esc 都尝试隐藏遮罩（防止渲染卡死）
