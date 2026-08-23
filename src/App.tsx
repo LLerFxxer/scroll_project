@@ -59,15 +59,28 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [isOverlay])
 
-  // 主窗口：监听 overlay 传回的截图
+  // 主窗口：监听 overlay 传回的截图 -> OCR -> 翻译
   useEffect(() => {
     if (isOverlay) return
     const handler = async (data: { rect: { x: number; y: number; width: number; height: number }; dataURL: string }) => {
       setCaptured({ dataURL: data.dataURL })
-      const mockText = 'Hello world! 你好，世界! 안녕하세요'
-      const res = await translate({ text: mockText, to: 'zh' })
-      setCaptured({ dataURL: data.dataURL, text: mockText })
-      void res
+      try {
+        // 真实 OCR (主进程 tesseract worker)
+        const ocr = await window.api.ocr.recognize(data.dataURL)
+        console.log('[main-render] ocr result', ocr)
+        if (!ocr.text || ocr.error === 'NO_TEXT') {
+          setCaptured({ dataURL: data.dataURL, text: '(未识别到文字)' })
+          return
+        }
+        setCaptured({ dataURL: data.dataURL, text: ocr.text })
+        // 翻译：自动目标语言
+        const to = ocr.lang === 'zh' ? 'en' : 'zh'
+        const res = await translate({ text: ocr.text, from: ocr.lang, to })
+        void res
+      } catch (e) {
+        console.error('[main-render] ocr/translate failed', e)
+        setCaptured({ dataURL: data.dataURL, text: '(OCR 失败: ' + String(e).slice(0, 60) + ')' })
+      }
     }
     window.api.capture.onDone(handler)
     // 注意：preload 的 onDone 会重复注册，MVP 够用，后续可加 off
@@ -156,7 +169,7 @@ export default function App() {
 
         <div className="text-xs text-gray-400">
           质量门禁: npm run lint / typecheck / test / build
-          <br />下一步: 步骤5 填充真实 OCR (tesseract.js)，步骤6 接入 DeepL/opencode
+          <br />链路: 截图 → 本地OCR(tesseract 中英韩) → 翻译(占位) | 下一步: 步骤6 接入 DeepL/opencode
         </div>
       </main>
 

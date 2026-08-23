@@ -2,6 +2,9 @@ import { app, BrowserWindow, globalShortcut, Tray, Menu, ipcMain, desktopCapture
 import { join } from 'path'
 import { existsSync } from 'fs'
 import { createOverlayWindow, getOverlayWindow, hideOverlay, showOverlay } from './overlay'
+import type { IOcrService } from '../src/types/ocr'
+
+let ocrService: IOcrService | null = null
 
 function getPreloadPath(): string {
   const candidates = [
@@ -131,6 +134,16 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('app:getVersion', () => app.getVersion())
+
+  // OCR: 主进程运行 tesseract worker，避免阻塞渲染进程 UI
+  // 注意：首次调用会下载语言包 (~15MB)，之后走缓存
+  ipcMain.handle('ocr:recognize', async (_e, dataURL: string) => {
+    const { createOcrService } = await import('../src/services/ocrService')
+    if (!ocrService) {
+      ocrService = createOcrService('tesseract')
+    }
+    return ocrService.recognize(dataURL)
+  })
 
   // 兜底：任何时候按 Esc 都尝试隐藏遮罩（防止渲染卡死）
   // 注意：不能全局注册 Escape，会拦截正常输入，仅在 overlay 可见时处理 via before-input-event 已做

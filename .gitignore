@@ -17,3 +17,6 @@ coverage
 playwright-report
 test-results
 electron-builder.env
+
+# tesseract 语言包缓存
+*.traineddata

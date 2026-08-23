@@ -1,34 +1,76 @@
-import type { IOcrService, OcrResult, Lang } from '@/types/ocr'
-import { logger } from '@/lib/logger'
+import { createWorker, type Worker } from 'tesseract.js'
+import type { IOcrService, OcrResult, Lang } from '../types/ocr'
+import { logger } from '../lib/logger'
 
-// Tesseract 降级实现占位，后续接入 PaddleOCR
+const TESS_LANGS: string[] = ['chi_sim', 'eng', 'kor']
+
+/**
+ * Tesseract 本地 OCR 实现 (降级方案，PaddleOCR 后续接入)
+ * Worker 单例懒加载，首次调用有 ~2-5s 初始化(下载语言包)，之后 <1s
+ */
 export class TesseractOcrService implements IOcrService {
+  private worker: Worker | null = null
+  private initPromise: Promise<Worker> | null = null
+
   detectLang(text: string): Lang {
-    if (/[\uAC00-\uD7AF]/.test(text)) return 'ko'
-    if (/[\u4e00-\u9fa5]/.test(text)) return 'zh'
-    return 'en'
+    const ko = (text.match(/[\uAC00-\uD7AF]/g) ?? []).length
+    const zh = (text.match(/[\u4e00-\u9fa5]/g) ?? []).length
+    const en = (text.match(/[a-zA-Z]/g) ?? []).length
+    // 按字符占比判定，韩文优先(假名范围不与汉字重叠)
+    if (ko > 0 && ko >= zh && ko >= en * 0.3) return 'ko'
+    if (zh > 0 && zh >= en * 0.5) return 'zh'
+    if (en > 0) return 'en'
+    return 'auto'
+  }
+
+  private async ensureWorker(): Promise<Worker> {
+    if (this.worker) return this.worker
+    if (!this.initPromise) {
+      this.initPromise = createWorker(TESS_LANGS, 1, {
+        logger: (m) => {
+          if (m.status === 'recognizing text') {
+            logger.info('[OcrService] progress:', Math.round(m.progress * 100), '%')
+          }
+        }
+      })
+        .then((w) => {
+          this.worker = w
+          logger.info('[OcrService] worker ready', TESS_LANGS.join('+'))
+          return w
+        })
+        .catch((e) => {
+          this.initPromise = null
+          throw e
+        })
+    }
+    return this.initPromise
   }
 
   async recognize(image: Buffer | string): Promise<OcrResult> {
     const start = Date.now()
-    logger.info('[OcrService] recognize start')
+    try {
+      const worker = await this.ensureWorker()
+      const { data } = await worker.recognize(image)
+      const text = (data.text ?? '').trim()
+      const confidence = data.confidence ?? 0
+      const lang = this.detectLang(text)
+      const latencyMs = Date.now() - start
+      logger.info('[OcrService] done', { lang, confidence, latencyMs, textLen: text.length })
 
-    // MVP: tesseract.js 动态导入，避免主线程阻塞
-    // 实际调用: const { createWorker } = await import('tesseract.js')
-    // 这里先返回 mock，保证链路可跑通，后续步骤填充真实逻辑
-    void image
-    void start
-
-    // TODO: Step 5 填充真实 OCR
-    // const worker = await createWorker(['chi_sim', 'eng', 'kor'])
-    // const { data } = await worker.recognize(image)
-
-    return {
-      text: '',
-      lang: 'auto' as Lang,
-      confidence: 0,
-      error: 'ENGINE_ERROR'
+      if (!text || confidence < 30) {
+        return { text, lang, confidence, error: text ? 'LOW_CONFIDENCE' : 'NO_TEXT' }
+      }
+      return { text, lang, confidence }
+    } catch (e) {
+      logger.error('[OcrService] recognize failed', e)
+      return { text: '', lang: 'auto', confidence: 0, error: 'ENGINE_ERROR' }
     }
+  }
+
+  async dispose(): Promise<void> {
+    await this.worker?.terminate()
+    this.worker = null
+    this.initPromise = null
   }
 }
 
@@ -40,7 +82,8 @@ export class PaddleOcrService implements IOcrService {
   }
 
   async recognize(_image: Buffer | string): Promise<OcrResult> {
-    // TODO: 通过 Node binding 或 Python sidecar 调用 PaddleOCR
+    // TODO 后续: Node binding 或 Python sidecar 调用 PaddleOCR (速度+准确率更优)
+    void _image
     throw new Error('PaddleOcrService not implemented yet')
   }
 }

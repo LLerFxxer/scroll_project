@@ -17,20 +17,24 @@ export function CaptureOverlay({ image, onConfirm, onCancel }: Props) {
     if (!rect || !image) return
     // 边界保护：小于 10px 视为误触
     if (rect.width < 10 || rect.height < 10) return
-    const canvas = document.createElement('canvas')
-    canvas.width = Math.round(rect.width)
-    canvas.height = Math.round(rect.height)
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
     const img = new Image()
     img.src = image
     await new Promise<void>((resolve, reject) => {
       img.onload = () => resolve()
       img.onerror = () => reject(new Error('image load failed'))
     })
-    // 注意：dataURL 是按 scaleFactor 缩放后的缩略图，CSS 坐标是 DIP
-    // MVP 直接按 DIP 裁剪，高分屏会有轻微模糊，后续可按 scaleFactor 校正
-    ctx.drawImage(img, -rect.x, -rect.y)
+    // scaleFactor 校正：截图物理像素 = CSS(DIP) * (img.naturalWidth / window宽)
+    const scale = img.naturalWidth / window.innerWidth || 1
+    const sx = Math.round(rect.x * scale)
+    const sy = Math.round(rect.y * scale)
+    const sw = Math.round(rect.width * scale)
+    const sh = Math.round(rect.height * scale)
+    const canvas = document.createElement('canvas')
+    canvas.width = sw
+    canvas.height = sh
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh)
     const dataURL = canvas.toDataURL('image/png')
     onConfirm(rect, dataURL)
   }, [rect, image, onConfirm])
