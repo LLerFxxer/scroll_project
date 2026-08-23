@@ -5,15 +5,19 @@ const TESS_LANGS: string[] = ['chi_sim', 'eng', 'kor']
 
 /**
  * OCR 后处理: tesseract 会在 中文/韩文 与 拉丁/数字 token 间插入空格
- * 清洗规则: CJK/韩文 与 [A-Za-z0-9] 相邻空格删除 (保留英文单词内空格)
+ * (可能为半角/全角U+3000/不间断U+00A0), 以及 ° 等符号两侧
+ * 清洗: 边界空格删除(保留英文单词内空格), 折叠多余空白
  */
 export function cleanOcrText(text: string): string {
-  const t = text
-    .replace(/([\u4e00-\u9fa5\uAC00-\uD7AF])[ \t]+([A-Za-z0-9])/g, '$1$2')
-    .replace(/([A-Za-z0-9])[ \t]+([\u4e00-\u9fa5\uAC00-\uD7AF])/g, '$1$2')
-    .replace(/[ \t]{2,}/g, ' ')
+  const CJK = '[\\u4e00-\\u9fa5\\u3040-\\u30ff\\uAC00-\\uD7AF]'
+  const LAT = '[A-Za-z0-9]'
+  const PUNC = '[°·×÷—…±%#@&*:;,.!?()\'"\\[\\]{}]'
+  return text
+    .replace(new RegExp(`(${CJK})[\\s]+(${LAT}|${PUNC})`, 'g'), '$1$2')
+    .replace(new RegExp(`(${LAT}|${PUNC})[\\s]+(${CJK})`, 'g'), '$1$2')
+    .replace(/[\u0020\u00a0\u3000]{2,}/g, ' ')
+    .replace(/[\u0020\u00a0\u3000]+$/g, '')
     .trim()
-  return t
 }
 
 /**
@@ -63,10 +67,14 @@ export class TesseractOcrService implements IOcrService {
     try {
       const worker = await this.ensureWorker()
       const { data } = await worker.recognize(image, {}, { text: true, blocks: true })
-      const text = cleanOcrText((data.text ?? '').trim())
+      const raw = (data.text ?? '').trim()
+      const text = cleanOcrText(raw)
       const confidence = data.confidence ?? 0
       const lang = this.detectLang(text)
       const latencyMs = Date.now() - start
+      // 通查日志: JSON 编码暴露隐藏空格字符码 (U+3000/U+00A0 等)
+      logger.info('[OcrService] raw  :', JSON.stringify(raw.slice(0, 160)))
+      logger.info('[OcrService] clean:', JSON.stringify(text.slice(0, 160)))
       logger.info('[OcrService] done', { lang, confidence, latencyMs, textLen: text.length })
 
       // 行级 blocks (bbox 物理像素 x0,y0,x1,y1 -> [x,y,w,h])

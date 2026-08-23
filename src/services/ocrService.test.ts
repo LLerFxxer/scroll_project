@@ -14,7 +14,16 @@ describe('cleanOcrText', () => {
   it('collapses multiple spaces', () => {
     expect(cleanOcrText('a   b\n c ')).toBe('a b\n c')
   })
-  it('kespace between hangul and latin', () => {
+  it('removes full-width space U+3000', () => {
+    expect(cleanOcrText('mod4\u3000又加强')).toBe('mod4又加强')
+  })
+  it('removes nbsp U+00A0', () => {
+    expect(cleanOcrText('sp6\u00a0直购')).toBe('sp6直购')
+  })
+  it('removes space around degree symbol', () => {
+    expect(cleanOcrText('以前是打 pab9\u00b0 经济弹')).toBe('以前是打pab9°经济弹')
+  })
+  it('removes space between hangul and latin', () => {
     expect(cleanOcrText('안녕 123')).toBe('안녕123')
   })
 })
