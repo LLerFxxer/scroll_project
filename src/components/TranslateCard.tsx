@@ -4,7 +4,7 @@ type Props = {
   original: string
   translated: string
   refined?: string
-  provider?: 'deepl' | 'opencode' | 'fallback'
+  provider?: 'deepl' | 'opencode' | 'google' | 'fallback'
   refinedProvider?: string
   onClose: () => void
   onSave: () => void
@@ -13,6 +13,7 @@ type Props = {
 const PROVIDER_LABEL: Record<string, string> = {
   deepl: 'DeepL 快译',
   opencode: 'LLM',
+  google: 'Google 快译',
   fallback: '原文'
 }
 
