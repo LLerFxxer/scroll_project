@@ -16,4 +16,5 @@
 [2026-08-22 16:45] 步骤6完成 — 混合翻译真实接入: DeepL REST /v2/translate(1.5s超时) + opencode /chat/completions(15s), 快译先渲染/精译 onRefined 事件推送+卡片高亮动画, .env 配置加载, stub单测7用例共12项通过, 提交 d34068a 已推送; 下一步 步骤7 端到端联调/步骤8 设置与保存
 [2026-08-22 23:30] 需求转向 — 用户要求有道式原位覆盖+免API快译；已更新 .spec/prd F3/F4 + arch 数据流；实现底层 d696f32(GoogleFree 行级快译+OCR blocks+quick IPC) + 交互 9296b56(遮罩三态覆盖渲染、主窗口改精译工作台)，15 tests passed，待本地验证
 [2026-08-23 00:35] 修复截图两问题 — ①主窗隐藏: triggerCapture 先 hide() + overlay refresh/ready 每次重新截屏(消除陈旧启动截图含主窗居中) + 托盘1x1兜底图标; ②译文不显示: Google端点国内不可达, 快译改 Edge api.edge.microsoft.com 优先+Google回退; 17 tests passed, 提交 15f094c 已推送
+[2026-08-23 00:42] 修复译文仍显示原文 — 日志确认 OCR 正常(en 95) 但 Edge+Google 均失败静默回退; 快译链升级 Edge(+UA头)->Google->MyMemory 三引擎+逐行失败日志, 全回退时遮罩琥珀色提示条(不再静默); 20 tests passed, 提交 91b52d0 已推送
 
