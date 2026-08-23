@@ -10,6 +10,8 @@ interface Window {
     }
     overlay: {
       close(): Promise<void>
+      ready(): void
+      onRefresh(cb: () => void): void
     }
     ocr: {
       recognize(dataURL: string): Promise<import('./src/types/ocr').OcrResult>

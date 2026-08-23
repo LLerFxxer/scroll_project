@@ -8,7 +8,7 @@ export default function App() {
   const [captured, setCaptured] = useState<{ dataURL: string; ocrText?: string; zhFast?: string; lang?: string } | null>(null)
   const { translate, result, refined, loading } = useTranslate()
 
-  // Overlay: 加载全屏截图
+  // Overlay: 加载全屏截图 (挂载时一次 + 每次热键触发 refresh 重新截屏)
   useEffect(() => {
     if (!isOverlay) return
     console.log('[overlay] mount, window.api exists?', !!window.api)
@@ -17,14 +17,22 @@ export default function App() {
       return
     }
     let cancelled = false
-    window.api.capture
-      .getSources()
-      .then((sources) => {
-        if (cancelled) return
-        const primary = sources[0]
-        if (primary?.dataURL) setOverlayImage(primary.dataURL)
-      })
-      .catch((e) => console.error('[overlay] getSources failed', e))
+    const loadSources = () => {
+      window.api.capture
+        .getSources()
+        .then((sources) => {
+          if (cancelled) return
+          const primary = sources[0]
+          if (primary?.dataURL) setOverlayImage(primary.dataURL)
+          if (window.api?.overlay?.ready) window.api.overlay.ready()
+        })
+        .catch((e) => {
+          console.error('[overlay] getSources failed', e)
+          if (window.api?.overlay?.ready) window.api.overlay.ready()
+        })
+    }
+    loadSources()
+    window.api.overlay.onRefresh(loadSources)
     return () => {
       cancelled = true
     }

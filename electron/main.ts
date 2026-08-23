@@ -1,4 +1,4 @@
-import { app, BrowserWindow, globalShortcut, Tray, Menu, ipcMain, desktopCapturer, screen } from 'electron'
+import { app, BrowserWindow, globalShortcut, Tray, Menu, ipcMain, desktopCapturer, screen, nativeImage } from 'electron'
 import { join } from 'path'
 import { existsSync, readFileSync } from 'fs'
 import { createOverlayWindow, getOverlayWindow, hideOverlay, showOverlay } from './overlay'
@@ -98,13 +98,20 @@ function createMainWindow() {
 function createTray() {
   // Tray icon optional for MVP - skip if no icon file
   try {
-    tray = new Tray(join(__dirname, '../../build/icon.png'))
+    let icon = nativeImage.createFromPath(join(__dirname, '../../build/icon.png'))
+    if (icon.isEmpty()) {
+      // 兜底 1x1 像素拉伸为 16x16 纯色图标，保证托盘可见可退出
+      icon = nativeImage
+        .createFromDataURL('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPj/HwADBgH/iMBnCAAAAABJRU5ErkJggg==' as never as `${string},${string}` extends never ? never : `data:image/png;base64,${string}` as never)
+        .resize({ width: 16, height: 16 })
+    }
+    tray = new Tray(icon)
   } catch {
     return
   }
   const contextMenu = Menu.buildFromTemplate([
     { label: '截图翻译 (Ctrl+Shift+A)', click: () => triggerCapture() },
-    { label: '设置', click: () => mainWindow?.show() },
+    { label: '显示主窗口', click: () => mainWindow?.show() },
     { type: 'separator' },
     { label: '退出', click: () => app.quit() }
   ])
@@ -113,10 +120,21 @@ function createTray() {
 }
 
 async function triggerCapture() {
+  // 关键：隐藏主窗口，避免其出现在截图中
+  mainWindow?.hide()
   const overlay = getOverlayWindow() ?? createOverlayWindow()
+  // 每次触发都让 overlay 重新截屏（refresh/ready 握手），避免陈旧画面
+  const ready = new Promise<void>((resolve) => {
+    const t = setTimeout(resolve, 900) // 兜底：页面未就绪时直接显示
+    ipcMain.once('overlay:ready', () => {
+      clearTimeout(t)
+      resolve()
+    })
+  })
+  overlay.webContents.send('overlay:refresh')
+  await ready
   showOverlay()
-  // 确保 overlay 内容已加载，延迟 50ms 再聚焦，避免焦点丢失
-  setTimeout(() => overlay.focus(), 50)
+  setTimeout(() => overlay.focus(), 30)
 }
 
 app.whenReady().then(() => {
@@ -141,6 +159,11 @@ app.whenReady().then(() => {
 
   ipcMain.handle('overlay:close', async () => {
     hideOverlay()
+  })
+
+  // overlay 截屏完成信号 (invoke 之外用 send，避免 handler 冲突)
+  ipcMain.on('overlay:ready', () => {
+    /* 由 triggerCapture 的 once 监听消费 */
   })
 
   ipcMain.handle('capture:done', async (_e, data: { rect?: { x: number; y: number; width: number; height: number }; dataURL: string; ocrText?: string; zhFast?: string; lang?: string }) => {

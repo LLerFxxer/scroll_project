@@ -14,7 +14,11 @@ contextBridge.exposeInMainWorld('api', {
     }
   },
   overlay: {
-    close: () => ipcRenderer.invoke('overlay:close')
+    close: () => ipcRenderer.invoke('overlay:close'),
+    ready: () => ipcRenderer.send('overlay:ready'),
+    onRefresh: (cb: () => void) => {
+      ipcRenderer.on('overlay:refresh', () => cb())
+    }
   },
   ocr: {
     recognize: (dataURL: string) => ipcRenderer.invoke('ocr:recognize', dataURL)

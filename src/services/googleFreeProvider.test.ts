@@ -1,7 +1,18 @@
 import { describe, it, expect } from 'vitest'
-import { parseGoogleFreeResponse } from './googleFreeProvider'
+import { parseGoogleFreeResponse, parseEdgeResponse } from './googleFreeProvider'
 
-describe('GoogleFreeProvider', () => {
+describe('parseEdgeResponse', () => {
+  it('valid edge response', () => {
+    const json = [{ DetectedLanguage: 'en', Translations: [{ Text: '你好', To: 'zh-Hans' }] }] as unknown
+    expect(parseEdgeResponse(json)).toBe('你好')
+  })
+  it('throws on invalid', () => {
+    expect(() => parseEdgeResponse([] as unknown)).toThrow('EDGE_PARSE_FAIL')
+    expect(() => parseEdgeResponse({} as unknown)).toThrow('EDGE_PARSE_FAIL')
+  })
+})
+
+describe('parseGoogleFreeResponse', () => {
   it('parse valid response', () => {
     // 模拟真实响应: [[["你好","Hello",...]],...]
     const json = [[['你好', 'Hello']], null, 'en'] as unknown
