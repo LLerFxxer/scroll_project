@@ -1,8 +1,20 @@
 import { createWorker, type Worker } from 'tesseract.js'
 import type { IOcrService, OcrResult, Lang, TextBlock } from '../types/ocr'
 import { logger } from '../lib/logger'
-
 const TESS_LANGS: string[] = ['chi_sim', 'eng', 'kor']
+
+/**
+ * OCR 后处理: tesseract 会在 中文/韩文 与 拉丁/数字 token 间插入空格
+ * 清洗规则: CJK/韩文 与 [A-Za-z0-9] 相邻空格删除 (保留英文单词内空格)
+ */
+export function cleanOcrText(text: string): string {
+  const t = text
+    .replace(/([\u4e00-\u9fa5\uAC00-\uD7AF])[ \t]+([A-Za-z0-9])/g, '$1$2')
+    .replace(/([A-Za-z0-9])[ \t]+([\u4e00-\u9fa5\uAC00-\uD7AF])/g, '$1$2')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim()
+  return t
+}
 
 /**
  * Tesseract 本地 OCR 实现 (降级方案，PaddleOCR 后续接入)
@@ -51,7 +63,7 @@ export class TesseractOcrService implements IOcrService {
     try {
       const worker = await this.ensureWorker()
       const { data } = await worker.recognize(image, {}, { text: true, blocks: true })
-      const text = (data.text ?? '').trim()
+      const text = cleanOcrText((data.text ?? '').trim())
       const confidence = data.confidence ?? 0
       const lang = this.detectLang(text)
       const latencyMs = Date.now() - start

@@ -8,6 +8,17 @@ import { TranslateRouter, DeepLProvider, OpencodeProvider } from '../src/service
 
 let ocrService: IOcrService | null = null
 
+/** OCR 预处理: 小文本 1.4~2x 上采样(保真 best 质量), 显著提升 tesseract 准确率与特殊符号保留 */
+function preprocessImage(dataURL: string): Buffer {
+  const img = nativeImage.createFromDataURL(dataURL)
+  const size = img.getSize()
+  if (size.width <= 0) return Buffer.from('')
+  const maxW = 3200
+  const scale = size.width < maxW ? Math.min(2, Math.max(1.4, maxW / size.width)) : 1
+  const pre = scale > 1.05 ? img.resize({ width: Math.round(size.width * scale), height: Math.round(size.height * scale), quality: 'best' }) : img
+  return pre.toPNG()
+}
+
 /** 轻量 .env 加载 (dev 用；打包后走 electron-store，见步骤8) */
 function loadDotEnv(): void {
   try {
@@ -209,13 +220,13 @@ app.whenReady().then(() => {
   })
 
   // OCR: 主进程运行 tesseract worker，避免阻塞渲染进程 UI
-  // 注意：首次调用会下载语言包 (~15MB)，之后走缓存
+  // 注意：首次调用会下载语言包 (~15MB)，之后走缓存；识别前先上采样
   ipcMain.handle('ocr:recognize', async (_e, dataURL: string) => {
     const { createOcrService } = await import('../src/services/ocrService')
     if (!ocrService) {
       ocrService = createOcrService('tesseract')
     }
-    return ocrService.recognize(dataURL)
+    return ocrService.recognize(preprocessImage(dataURL))
   })
 
   // 翻译: 快通道同步返回，LLM 精译后台完成后经 translate:refined 推送
@@ -234,7 +245,7 @@ app.whenReady().then(() => {
       const { createOcrService } = await import('../src/services/ocrService')
       ocrService = createOcrService('tesseract')
     }
-    const ocr = await ocrService.recognize(dataURL)
+    const ocr = await ocrService.recognize(preprocessImage(dataURL))
     if (!ocr.text || ocr.error) {
       return { ocr, full: '', error: ocr.error ?? 'NO_TEXT' }
     }
