@@ -24,4 +24,5 @@
 [2026-08-23 01:30] OCR修复 — ①cleanOcrText 中英/中日韩边界去空格(mod4 又->mod4又, 保留英文词内空格) ②识别前 1.4-2x 上采样(游戏彩色小字/° 精度提升) ③单测25项 提交 4746343
 [2026-08-23 01:35] OCR通查 — 用户反馈仍未修复; 正则增强 \s+ 覆盖 U+3000/U+00A0 隐藏空格+标点两侧, recognize 加 raw/clean JSON 字符码日志待用户回传确认; 单测28项 提交 425040c; 待决策 PaddleOCR 方案A(Python sidecar)/方案B(PaddleJS/ONNX)
 [2026-08-23 13:35] 方案A落地 — 用户选精度最高; python/ocr_server.py(PP-OCRv5 stdlib HTTP) + paddleSidecar(spawn/健康/180s超时) + main recognizeSmart 链 paddle->tesseract; 单测32项, 提交 abd03c2 (⚠️ GitHub 网络故障未推送, 待网络恢复后 git push)
+[2026-08-23 14:20] 方案A实测打通 — 本机 paddle 3.7.0 oneDNN/PIR bug → 降级 paddleocr 2.7.3+paddlepaddle 2.6.2+numpy<2+scipy1.13.1+opencv-headless4.10; server 双API自适应; HTTP /ocr 实测中英混排无空格 conf 0.977; 提交 5558c2b 已推送
 
