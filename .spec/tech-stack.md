@@ -21,11 +21,12 @@
 - `globalShortcut`, `desktopCapturer`, `BrowserWindow(transparent, fullscreen)`, `clipboard`, `nativeImage`
 
 **OCR 依赖:**
-- 首选: `PaddleOCR 3.x (PP-OCRv5)` Python sidecar — `paddleocr` + `paddlepaddle`(CPU), lang=`ch`(中英) / `korean`, stdlib HTTP 服务 `python/ocr_server.py`, 由主进程 spawn 管理
+- 首选: `PaddleOCR 2.7.3 (PP-OCRv4)` Python sidecar — `paddleocr==2.7.3` + `paddlepaddle==2.6.2`(CPU) + `numpy<2` + `scipy==1.13.1` + `opencv-python-headless>=4.9`, lang=`ch`(中英) / `korean`, stdlib HTTP 服务 `python/ocr_server.py`, 由主进程 spawn 管理
 - 降级: `tesseract.js@5` (wasm, chi_sim+eng+kor)
 - 抽象: `IOcrService` + 主进程 `recognizeSmart()` 链: paddle(ready) → tesseract
-- 配置: `.env` `PADDLE_PYTHON`(默认 `python`), 首次自动下载 PP-OCRv5 模型(~20MB)
-- 安装: `pip install paddleocr paddlepaddle` (Python 3.8+, 仅需 CPU)
+- 配置: `.env` `PADDLE_PYTHON`(默认 `python`), 首次自动下载 PP-OCRv4 模型
+- 安装: `pip install paddleocr==2.7.3 paddlepaddle==2.6.2 "numpy<2" scipy==1.13.1 "opencv-python-headless>=4.9"`
+- 已知坑: paddle 3.x 在本机 CPU 有 oneDNN/PIR bug(ConvertPirAttribute2RuntimeAttribute), 故锁 2.7.3
 
 **翻译依赖:**
 - `DeepL API` (可选, 500k/月免费)
