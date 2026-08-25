@@ -23,4 +23,5 @@
 [2026-08-23 01:20] 段落化重构 — 长文本逐行翻译按行截断无法阅读; translate:quick 改整段一次翻译(8s)返回 full; CaptureOverlay 结果态改段落面板(覆盖选区黑底白字可滚动, 字号自适应), 功能栏复制文本/重试/主页精译/关闭贴面板下; 提交 837949a 已推送
 [2026-08-23 01:30] OCR修复 — ①cleanOcrText 中英/中日韩边界去空格(mod4 又->mod4又, 保留英文词内空格) ②识别前 1.4-2x 上采样(游戏彩色小字/° 精度提升) ③单测25项 提交 4746343
 [2026-08-23 01:35] OCR通查 — 用户反馈仍未修复; 正则增强 \s+ 覆盖 U+3000/U+00A0 隐藏空格+标点两侧, recognize 加 raw/clean JSON 字符码日志待用户回传确认; 单测28项 提交 425040c; 待决策 PaddleOCR 方案A(Python sidecar)/方案B(PaddleJS/ONNX)
+[2026-08-23 13:35] 方案A落地 — 用户选精度最高; python/ocr_server.py(PP-OCRv5 stdlib HTTP) + paddleSidecar(spawn/健康/180s超时) + main recognizeSmart 链 paddle->tesseract; 单测32项, 提交 abd03c2 (⚠️ GitHub 网络故障未推送, 待网络恢复后 git push)
 
