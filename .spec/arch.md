@@ -69,8 +69,9 @@ export interface IOcrService {
   recognize(image: Buffer | string): Promise<OcrResult>
   detectLang(text: string): 'zh'|'en'|'ko'
 }
-// 实现: PaddleOcrService -> TesseractService (fallback)
-```
+// 实现链(主进程 recognizeSmart): PaddleSidecar(PP-OCRv5 HTTP, 精度最高) -> TesseractService(降级)
+// sidecar: python/ocr_server.py, 主进程 spawn, /health 就绪探测, /ocr POST base64
+// 语言: ch(中英) / korean 双引擎懒加载; 结果 parsePaddleResponse 清洗(去空格规则沿用 cleanOcrText)
 
 ### 3.2 ITranslateRouter (混合)
 ```ts

@@ -2,11 +2,28 @@ import { app, BrowserWindow, globalShortcut, Tray, Menu, ipcMain, desktopCapture
 import { join } from 'path'
 import { existsSync, readFileSync } from 'fs'
 import { createOverlayWindow, getOverlayWindow, hideOverlay, showOverlay } from './overlay'
-import type { IOcrService } from '../src/types/ocr'
+import type { IOcrService, OcrResult } from '../src/types/ocr'
 import type { TranslateRequest } from '../src/types/translate'
 import { TranslateRouter, DeepLProvider, OpencodeProvider } from '../src/services/translateRouter'
+import { PaddleSidecar, resolvePaddleScript } from '../src/services/paddleSidecar'
 
 let ocrService: IOcrService | null = null
+const paddleSidecar = new PaddleSidecar(resolvePaddleScript(app.getAppPath()))
+
+/** 智能识别链: Paddle(PP-OCRv5, 精度最高) -> Tesseract(降级) */
+async function recognizeSmart(dataURL: string): Promise<OcrResult> {
+  if (paddleSidecar.ready) {
+    try {
+      const r = await paddleSidecar.ocr(dataURL, 'ch')
+      return { text: r.text, lang: r.lang, confidence: r.confidence }
+    } catch (e) {
+      console.warn('[main] paddle failed, fallback tesseract:', e instanceof Error ? e.message : e)
+    }
+  }
+  const { createOcrService } = await import('../src/services/ocrService')
+  if (!ocrService) ocrService = createOcrService('tesseract')
+  return ocrService.recognize(preprocessImage(dataURL))
+}
 
 /** OCR 预处理: 小文本 1.4~2x 上采样(保真 best 质量), 显著提升 tesseract 准确率与特殊符号保留 */
 function preprocessImage(dataURL: string): Buffer {
@@ -155,6 +172,8 @@ app.whenReady().then(() => {
   createMainWindow()
   createTray()
   createOverlayWindow()
+  // PaddleOCR sidecar 后台启动(不阻塞 UI); 未就绪时自动回退 tesseract
+  paddleSidecar.start().catch((e) => console.warn('[main] paddle sidecar start failed:', e))
 
   // Global hotkey: Ctrl+Shift+A
   const hotkey = 'CommandOrControl+Shift+A'
@@ -219,14 +238,9 @@ app.whenReady().then(() => {
     console.log('[main] image copied to clipboard')
   })
 
-  // OCR: 主进程运行 tesseract worker，避免阻塞渲染进程 UI
-  // 注意：首次调用会下载语言包 (~15MB)，之后走缓存；识别前先上采样
+  // OCR: 主进程运行, Paddle sidecar 优先, tesseract 降级; 不阻塞渲染 UI
   ipcMain.handle('ocr:recognize', async (_e, dataURL: string) => {
-    const { createOcrService } = await import('../src/services/ocrService')
-    if (!ocrService) {
-      ocrService = createOcrService('tesseract')
-    }
-    return ocrService.recognize(preprocessImage(dataURL))
+    return recognizeSmart(dataURL)
   })
 
   // 翻译: 快通道同步返回，LLM 精译后台完成后经 translate:refined 推送
@@ -239,13 +253,9 @@ app.whenReady().then(() => {
     })
   })
 
-  // 快译覆盖: 截图 -> OCR -> 整段翻译为中文 (免Key, 段落面板显示)
+  // 快译覆盖: 截图 -> OCR(智能链) -> 整段翻译为中文 (免Key, 段落面板显示)
   ipcMain.handle('translate:quick', async (_e, dataURL: string) => {
-    if (!ocrService) {
-      const { createOcrService } = await import('../src/services/ocrService')
-      ocrService = createOcrService('tesseract')
-    }
-    const ocr = await ocrService.recognize(preprocessImage(dataURL))
+    const ocr = await recognizeSmart(dataURL)
     if (!ocr.text || ocr.error) {
       return { ocr, full: '', error: ocr.error ?? 'NO_TEXT' }
     }
@@ -281,4 +291,5 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
+  paddleSidecar.stop()
 })

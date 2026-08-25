@@ -21,9 +21,11 @@
 - `globalShortcut`, `desktopCapturer`, `BrowserWindow(transparent, fullscreen)`, `clipboard`, `nativeImage`
 
 **OCR 依赖:**
-- 优先: `paddleocr-node` 或 Python sidecar `paddleocr==2.7` (onnx)
-- 降级: `tesseract.js@5` (wasm, 支持 chi_sim+eng+kor)
-- 抽象: `IOcrService`
+- 首选: `PaddleOCR 3.x (PP-OCRv5)` Python sidecar — `paddleocr` + `paddlepaddle`(CPU), lang=`ch`(中英) / `korean`, stdlib HTTP 服务 `python/ocr_server.py`, 由主进程 spawn 管理
+- 降级: `tesseract.js@5` (wasm, chi_sim+eng+kor)
+- 抽象: `IOcrService` + 主进程 `recognizeSmart()` 链: paddle(ready) → tesseract
+- 配置: `.env` `PADDLE_PYTHON`(默认 `python`), 首次自动下载 PP-OCRv5 模型(~20MB)
+- 安装: `pip install paddleocr paddlepaddle` (Python 3.8+, 仅需 CPU)
 
 **翻译依赖:**
 - `DeepL API` (可选, 500k/月免费)
